@@ -246,30 +246,26 @@ while IFS= read -r service_name; do
 done < <(yq eval '.services | keys | .[]' insights-lm-local-package/docker-compose.copy.yml)
 
 # Configure n8n for external access
-echo -e "${YELLOW}Configuring n8n external access...${NC}"
+echo -e "${YELLOW}Configuring n8n external access and environment...${NC}"
 
-# Add N8N_SECURE_COOKIE=false to x-n8n environment for external access
-cat > fix_n8n_config.py << 'EOF'
-import yaml
+# Add N8N_SECURE_COOKIE=false and N8N_RUNNERS_ENABLED=true to x-n8n environment using yq
+# Check if N8N_SECURE_COOKIE exists in the environment array
+if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_SECURE_COOKIE=*")' docker-compose.yml | grep -q "N8N_SECURE_COOKIE"; then
+    # Add N8N_SECURE_COOKIE=false to the environment array
+    yq eval '.["x-n8n"].environment += ["N8N_SECURE_COOKIE=false"]' -i docker-compose.yml
+    echo "  Added N8N_SECURE_COOKIE=false for external access"
+else
+    echo "  N8N_SECURE_COOKIE already set"
+fi
 
-with open('docker-compose.yml', 'r') as f:
-    compose = yaml.safe_load(f)
-
-# Add N8N_SECURE_COOKIE=false to x-n8n environment if it exists
-if 'x-n8n' in compose and 'environment' in compose['x-n8n']:
-    env_list = compose['x-n8n']['environment']
-    # Check if N8N_SECURE_COOKIE is already set
-    secure_cookie_exists = any('N8N_SECURE_COOKIE' in str(env) for env in env_list)
-    if not secure_cookie_exists:
-        env_list.append('N8N_SECURE_COOKIE=false')
-        print("  Added N8N_SECURE_COOKIE=false for external access")
-
-with open('docker-compose.yml', 'w') as f:
-    yaml.dump(compose, f, default_flow_style=False, sort_keys=False, width=1000)
-EOF
-
-python3 fix_n8n_config.py
-rm fix_n8n_config.py
+# Check if N8N_RUNNERS_ENABLED exists in the environment array
+if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_RUNNERS_ENABLED=*")' docker-compose.yml | grep -q "N8N_RUNNERS_ENABLED"; then
+    # Add N8N_RUNNERS_ENABLED=true to the environment array
+    yq eval '.["x-n8n"].environment += ["N8N_RUNNERS_ENABLED=true"]' -i docker-compose.yml
+    echo "  Added N8N_RUNNERS_ENABLED=true to enable task runners"
+else
+    echo "  N8N_RUNNERS_ENABLED already set"
+fi
 
 # Update override file for n8n external access
 if [ -f "docker-compose.override.private.yml" ]; then
