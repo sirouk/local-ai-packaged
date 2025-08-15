@@ -393,25 +393,18 @@ cp .env supabase/docker/.env
 if [ "$IS_MACOS" = true ]; then
     echo -e "${YELLOW}Configuring storage for macOS compatibility...${NC}"
     
-    # Check if storage service exists in supabase docker-compose
-    if yq eval '.services | has("storage")' supabase/docker/docker-compose.yml | grep -q "true"; then
-        echo "  Disabling extended attributes for macOS filesystem compatibility..."
-        
-        # Add environment variables to disable xattrs and fix path handling
-        if ! yq eval '.services.storage.environment | has("STORAGE_S3_FORCE_PATH_STYLE")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.STORAGE_S3_FORCE_PATH_STYLE = "true"' -i supabase/docker/docker-compose.yml
+    STORAGE_COMPOSE="supabase/docker/docker-compose.yml"
+    # Ensure the storage service exists before modifying
+    if yq eval '.services | has("storage")' "$STORAGE_COMPOSE" | grep -q "true"; then
+        echo "  Switching storage service to named volume to avoid xattr issues..."
+        # Replace bind-mount with a Docker named volume that lives inside the VM (supports xattrs)
+        yq eval '.services.storage.volumes = ["supabase_storage_data:/var/lib/storage"]' -i "$STORAGE_COMPOSE"
+
+        # Add the named volume at root level if it does not yet exist
+        if ! yq eval '.volumes | has("supabase_storage_data")' "$STORAGE_COMPOSE" | grep -q "true"; then
+            yq eval '.volumes.supabase_storage_data = {}' -i "$STORAGE_COMPOSE"
         fi
-        
-        if ! yq eval '.services.storage.environment | has("MINIO_STORAGE_USE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.MINIO_STORAGE_USE_XATTR = "false"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        # Also disable SSL for local storage
-        if ! yq eval '.services.storage.environment | has("STORAGE_S3_DISABLE_SSL")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.STORAGE_S3_DISABLE_SSL = "true"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        echo "  ✅ Storage configured for macOS compatibility"
+        echo "  ✅ Storage service updated to use Docker volume \"supabase_storage_data\""
     fi
 fi
 
