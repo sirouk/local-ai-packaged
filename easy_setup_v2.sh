@@ -954,9 +954,9 @@ CONTAINER_ANON_KEY=$(docker exec insightslm sh -c "grep -o 'eyJhbGciOiJIUzI1NiIs
 
 if [ "$ENV_ANON_KEY" != "$CONTAINER_ANON_KEY" ] || [ -z "$ENV_ANON_KEY" ]; then
     echo -e "${YELLOW}Rebuilding InsightsLM with correct credentials...${NC}"
-    docker compose -p localai build insightslm
-    docker compose -p localai stop insightslm
-    docker compose -p localai up -d insightslm
+    docker compose -p localai build insightslm < /dev/null
+    docker compose -p localai stop insightslm < /dev/null
+    docker compose -p localai up -d insightslm < /dev/null
     sleep 5
     echo -e "${GREEN}InsightsLM rebuilt with correct credentials${NC}"
 else
