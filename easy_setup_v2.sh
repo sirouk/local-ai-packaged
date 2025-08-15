@@ -591,6 +591,7 @@ sed -e "s/HEADER_AUTH_ID_PLACEHOLDER/${HEADER_AUTH_ID}/g" \
     -e "s/SUPABASE_ID_PLACEHOLDER/${SUPABASE_ID}/g" \
     -e "s|SERVICE_ROLE_KEY_PLACEHOLDER|${SERVICE_ROLE_KEY}|g" \
     -e "s/OLLAMA_ID_PLACEHOLDER/${OLLAMA_ID}/g" \
+    -e "s/N8N_API_ID_PLACEHOLDER/${N8N_API_ID}/g" \
     -e "s/N8N_API_KEY_PLACEHOLDER/${N8N_API_KEY}/g" \
     /tmp/n8n_credentials_template.json > /tmp/n8n_credentials.json
 
