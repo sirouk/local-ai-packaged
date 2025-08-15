@@ -411,6 +411,11 @@ if [ "$IS_MACOS" = true ]; then
             yq eval '.services.storage.environment.STORAGE_S3_DISABLE_SSL = "true"' -i supabase/docker/docker-compose.yml
         fi
         
+        # Add TUS_URL_PATH for resumable uploads on macOS
+        if ! yq eval '.services.storage.environment | has("TUS_URL_PATH")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.TUS_URL_PATH = "/storage/v1/upload/resumable"' -i supabase/docker/docker-compose.yml
+        fi
+        
         echo "  ✅ Storage configured for macOS compatibility"
     fi
 fi
@@ -1083,6 +1088,7 @@ if [ "$IS_MACOS" = true ]; then
     echo "🍎 macOS Compatibility:"
     echo "   ✅ Storage service configured to disable extended attributes (xattrs)"
     echo "   ✅ File system compatibility mode enabled for macOS"
+    echo "   ✅ Resumable upload support configured for PDF/file uploads"
 fi
 echo ""
 echo -e "${GREEN}============================================================${NC}"
