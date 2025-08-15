@@ -384,6 +384,32 @@ fi
 # Copy .env to supabase/docker
 cp .env supabase/docker/.env
 
+# Fix storage extended attributes issue on macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}Configuring storage for macOS compatibility...${NC}"
+    
+    # Check if storage service exists in supabase docker-compose
+    if yq eval '.services | has("storage")' supabase/docker/docker-compose.yml | grep -q "true"; then
+        echo "  Disabling extended attributes for macOS filesystem compatibility..."
+        
+        # Add environment variables to disable xattrs and fix path handling
+        if ! yq eval '.services.storage.environment | has("STORAGE_S3_FORCE_PATH_STYLE")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.STORAGE_S3_FORCE_PATH_STYLE = "true"' -i supabase/docker/docker-compose.yml
+        fi
+        
+        if ! yq eval '.services.storage.environment | has("MINIO_STORAGE_USE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.MINIO_STORAGE_USE_XATTR = "false"' -i supabase/docker/docker-compose.yml
+        fi
+        
+        # Also disable SSL for local storage
+        if ! yq eval '.services.storage.environment | has("STORAGE_S3_DISABLE_SSL")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.STORAGE_S3_DISABLE_SSL = "true"' -i supabase/docker/docker-compose.yml
+        fi
+        
+        echo "  ✅ Storage configured for macOS compatibility"
+    fi
+fi
+
 # Configure Supabase Edge Functions environment variables BEFORE starting services
 echo -e "${YELLOW}Configuring Supabase Edge Functions environment variables...${NC}"
 
@@ -1047,5 +1073,11 @@ echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"
 echo "   🌐 n8n web session established for proper workflow activation"
 echo "   📝 If you experience 500 errors, workflows may need manual activation via web UI"
+if [ "$IS_MACOS" = true ]; then
+    echo ""
+    echo "🍎 macOS Compatibility:"
+    echo "   ✅ Storage service configured to disable extended attributes (xattrs)"
+    echo "   ✅ File system compatibility mode enabled for macOS"
+fi
 echo ""
 echo -e "${GREEN}============================================================${NC}"
