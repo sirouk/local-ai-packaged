@@ -594,6 +594,18 @@ WATCH_OLLAMA
     # Ensure the service starts under cpu profile so it is included when profile filtering is used
     yq eval '.services.ollama.profiles = ["cpu"]' -i "$DC_FILE"
 
+    # 8. Clean up overrides that referenced removed ollama services
+    OVERRIDE_FILE="docker-compose.override.private.yml"
+    if [ -f "$OVERRIDE_FILE" ]; then
+      for svc in ollama-cpu ollama-gpu ollama-gpu-amd; do
+        if yq eval ".services | has(\"$svc\")" "$OVERRIDE_FILE" | grep -q "true"; then
+          yq eval "del(.services.\"$svc\")" -i "$OVERRIDE_FILE"
+        fi
+      done
+      # Optionally add host port for new 'ollama' if needed (not required for internal routing via caddy)
+      # yq eval '.services.ollama.ports = ["127.0.0.1:11434:11434"]' -i "$OVERRIDE_FILE" 2>/dev/null || true
+    fi
+
     echo "  ✅ Proxy service 'ollama' configured with watcher-based lifecycle coupling"
     echo "     → Container starts = Ollama starts on host"
     echo "     → Container stops = Ollama stops on host (forcefully if needed)"
