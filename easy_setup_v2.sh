@@ -544,7 +544,7 @@ cat > /tmp/n8n_credentials.json << EOF
     "name": "Supabase account",
     "type": "supabaseApi",
     "data": {
-      "host": "http://supabase-kong:8000",
+      "host": "http://kong:8000",
       "serviceRoleKey": "${SERVICE_ROLE_KEY}"
     }
   },
