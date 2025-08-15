@@ -9,6 +9,27 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Detect operating system
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    IS_MACOS=true
+    echo -e "${YELLOW}Detected macOS system${NC}"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    IS_MACOS=false
+    echo -e "${YELLOW}Detected Linux system${NC}"
+else
+    echo -e "${RED}Unsupported operating system: $OSTYPE${NC}"
+    exit 1
+fi
+
+# Cross-platform sed function
+cp_sed() {
+    if [ "$IS_MACOS" = true ]; then
+        sed -i "" "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 # Repository configuration
 # Original repositories:
 # LOCAL_AI_REPO="https://github.com/coleam00/local-ai-packaged.git"
@@ -33,9 +54,25 @@ echo ""
 
 # Install required packages
 echo -e "${YELLOW}Installing required packages...${NC}"
-sudo apt update
-sudo apt install -y python3 python3-venv net-tools python3-pip curl git jq
-snap install --classic yq
+if [ "$IS_MACOS" = true ]; then
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        echo -e "${YELLOW}Installing Homebrew...${NC}"
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Add Homebrew to PATH for current session
+        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    fi
+    brew update
+    brew install python3 curl git jq yq
+    echo -e "${GREEN}macOS packages installed successfully${NC}"
+else
+    # Linux package installation
+    sudo apt update
+    sudo apt install -y python3 python3-venv net-tools python3-pip curl git jq
+    snap install --classic yq
+    echo -e "${GREEN}Linux packages installed successfully${NC}"
+fi
 
 # Always start fresh with easy_setup_v2.sh
 if [ -d "$HOME/local-ai-packaged" ]; then
@@ -240,19 +277,19 @@ NEO4J_AUTH="neo4j/$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
 NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
 
 # Update .env file with secrets
-sed -i "s/N8N_ENCRYPTION_KEY=.*/N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY/" .env
-sed -i "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_USER_MANAGEMENT_JWT_SECRET/" .env
-sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
-sed -i "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
-sed -i "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
-sed -i "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
-sed -i "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
-sed -i "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
-sed -i "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
-sed -i "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$NEXTAUTH_SECRET/" .env
-sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-sed -i "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
-sed -i "s|NEO4J_AUTH=.*|NEO4J_AUTH=\"$NEO4J_AUTH\"|" .env
+cp_sed "s/N8N_ENCRYPTION_KEY=.*/N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY/" .env
+cp_sed "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_USER_MANAGEMENT_JWT_SECRET/" .env
+cp_sed "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
+cp_sed "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
+cp_sed "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
+cp_sed "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
+cp_sed "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
+cp_sed "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
+cp_sed "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
+cp_sed "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$NEXTAUTH_SECRET/" .env
+cp_sed "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
+cp_sed "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
+cp_sed "s|NEO4J_AUTH=.*|NEO4J_AUTH=\"$NEO4J_AUTH\"|" .env
 
 # Concatenate InsightsLM environment variables from .env.copy
 echo "" >> .env
@@ -260,7 +297,7 @@ echo "# InsightsLM Environment Variables" >> .env
 cat insights-lm-local-package/.env.copy >> .env
 
 # Update NOTEBOOK_GENERATION_AUTH to use our generated value (used for Header Auth)
-sed -i "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
+cp_sed "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
 
 # Add Ollama model configuration to .env
 echo "" >> .env
@@ -269,19 +306,19 @@ echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
 echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
 
 # Update STUDIO defaults
-sed -i 's/STUDIO_DEFAULT_ORGANIZATION=.*/STUDIO_DEFAULT_ORGANIZATION="InsightsLM"/' .env
-sed -i 's/STUDIO_DEFAULT_PROJECT=.*/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
+cp_sed 's/STUDIO_DEFAULT_ORGANIZATION=.*/STUDIO_DEFAULT_ORGANIZATION="InsightsLM"/' .env
+cp_sed 's/STUDIO_DEFAULT_PROJECT=.*/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
 
 # Generate JWT keys
 ANON_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'anon', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
 SERVICE_ROLE_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'service_role', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
 
-sed -i "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
-sed -i "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
+cp_sed "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
+cp_sed "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
 
 # Update URLs with external IP
 IPV4_ADDRESS=$(curl -s ipinfo.io/ip)
-sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
+cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
 
 # Source the .env file
 source .env
