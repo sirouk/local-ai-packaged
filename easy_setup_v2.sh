@@ -229,13 +229,13 @@ N8N_ENCRYPTION_KEY=$(openssl rand -hex 16)
 N8N_USER_MANAGEMENT_JWT_SECRET=$(openssl rand -hex 16)
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 JWT_SECRET=$(openssl rand -hex 16)
-DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+DASHBOARD_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
 CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
 LANGFUSE_SALT=$(openssl rand -hex 16)
 NEXTAUTH_SECRET=$(openssl rand -hex 16)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
-DASHBOARD_USERNAME="supabase"
+DASHBOARD_USERNAME="admin@local.host"
 NEO4J_AUTH="neo4j/$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
 NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
 
@@ -398,7 +398,7 @@ UNIFIED_EMAIL="admin@local.host"
 
 # Generate new password for fresh install
 echo "  Generating new password"
-UNIFIED_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
+UNIFIED_PASSWORD=$DASHBOARD_PASSWORD
 
 # Create Supabase Auth user
 # First check if user exists
