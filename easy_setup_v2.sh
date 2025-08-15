@@ -267,6 +267,15 @@ else
     echo "  N8N_RUNNERS_ENABLED already set"
 fi
 
+# Check if N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS exists in the environment array
+if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=*")' docker-compose.yml | grep -q "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS"; then
+    # Add N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true to the environment array
+    yq eval '.["x-n8n"].environment += ["N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true"]' -i docker-compose.yml
+    echo "  Added N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true to enforce correct file permissions"
+else
+    echo "  N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS already set"
+fi
+
 # Update override file for n8n external access
 if [ -f "docker-compose.override.private.yml" ]; then
     yq eval '.services.n8n.ports = ["0.0.0.0:5678:5678"]' -i docker-compose.override.private.yml
