@@ -342,9 +342,25 @@ SERVICE_ROLE_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'serv
 cp_sed "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
 cp_sed "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
 
-# Update URLs with external IP
-IPV4_ADDRESS=$(curl -s ipinfo.io/ip)
-cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
+# Configure access URLs
+echo -e "${YELLOW}Configuring service access URLs...${NC}"
+DETECTED_IP=$(curl -s ipinfo.io/ip)
+echo -e "Detected external IP: ${GREEN}$DETECTED_IP${NC}"
+echo ""
+read -p "Use external IP for service URLs? (y/N - default "N" uses localhost): " -r USE_EXTERNAL_IP
+USE_EXTERNAL_IP=${USE_EXTERNAL_IP:-N}
+# Clean any unexpected input
+USE_EXTERNAL_IP=$(echo "$USE_EXTERNAL_IP" | tr -d '\n\r' | head -c 1)
+
+if [[ "$USE_EXTERNAL_IP" =~ ^[Yy]$ ]]; then
+    ACCESS_HOST="$DETECTED_IP"
+    echo -e "${GREEN}Using external IP for service access: $ACCESS_HOST${NC}"
+else
+    ACCESS_HOST="localhost"
+    echo -e "${GREEN}Using localhost for service access${NC}"
+fi
+
+cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${ACCESS_HOST}:8000|" .env
 
 # Source the .env file
 source .env
@@ -954,9 +970,9 @@ CONTAINER_ANON_KEY=$(docker exec insightslm sh -c "grep -o 'eyJhbGciOiJIUzI1NiIs
 
 if [ "$ENV_ANON_KEY" != "$CONTAINER_ANON_KEY" ] || [ -z "$ENV_ANON_KEY" ]; then
     echo -e "${YELLOW}Rebuilding InsightsLM with correct credentials...${NC}"
-    docker compose -p localai build insightslm < /dev/null
-    docker compose -p localai stop insightslm < /dev/null
-    docker compose -p localai up -d insightslm < /dev/null
+    docker compose -p localai build insightslm
+    docker compose -p localai stop insightslm
+    docker compose -p localai up -d insightslm
     sleep 5
     echo -e "${GREEN}InsightsLM rebuilt with correct credentials${NC}"
 else
@@ -975,10 +991,10 @@ Service URLs:
 - n8n: http://localhost:5678
 - InsightsLM: http://localhost:3010
 
-External Access:
-- Supabase: http://${IPV4_ADDRESS}:8000
-- n8n: http://${IPV4_ADDRESS}:5678
-- InsightsLM: http://${IPV4_ADDRESS}:3010
+Service Access URLs:
+- Supabase: http://${ACCESS_HOST}:8000
+- n8n: http://${ACCESS_HOST}:5678
+- InsightsLM: http://${ACCESS_HOST}:3010
 EOF
 
 # Save current .env for future comparison
@@ -991,11 +1007,11 @@ echo -e "${GREEN}🎉 === SETUP COMPLETE === 🎉${NC}"
 echo -e "${GREEN}============================================================${NC}"
 echo ""
 echo "Service URLs:"
-echo "📊 Supabase Studio: http://${IPV4_ADDRESS}:8000"
-echo "🔧 N8N Workflow Editor: http://${IPV4_ADDRESS}:5678"
-echo "📓 InsightsLM: http://${IPV4_ADDRESS}:3010"
-# echo "💬 Open WebUI: http://${IPV4_ADDRESS}:8080"
-# echo "🌐 Flowise: http://${IPV4_ADDRESS}:3001"
+echo "📊 Supabase Studio: http://${ACCESS_HOST}:8000"
+echo "🔧 N8N Workflow Editor: http://${ACCESS_HOST}:5678"
+echo "📓 InsightsLM: http://${ACCESS_HOST}:3010"
+# echo "💬 Open WebUI: http://${ACCESS_HOST}:8080"
+# echo "🌐 Flowise: http://${ACCESS_HOST}:3001"
 echo ""
 echo "🔐 Login Credentials saved to: unified_credentials.txt"
 echo "   Email: ${UNIFIED_EMAIL}"
