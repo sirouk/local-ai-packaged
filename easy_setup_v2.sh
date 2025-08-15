@@ -233,7 +233,9 @@ while IFS= read -r service_name; do
                         yq eval ".services.coqui-tts.command = [\"--model_name\", \"tts_models/en/vctk/vits\", \"--use_cuda\", \"false\"]" -i docker-compose.yml
                         # Remove GPU device requirements  
                         yq eval "del(.services.coqui-tts.deploy.resources.reservations.devices)" -i docker-compose.yml
-                        echo "      → coqui-tts configured for CPU execution"
+                        # Add platform emulation for ARM64 compatibility
+                        yq eval ".services.coqui-tts.platform = \"linux/amd64\"" -i docker-compose.yml
+                        echo "      → coqui-tts configured for CPU execution with x86_64 emulation"
                         ;;
                 esac
             fi
@@ -415,6 +417,7 @@ if [ "$IS_MACOS" = true ]; then
     if [[ $(uname -m) == "arm64" ]]; then
         PROFILE="cpu"  # Apple Silicon uses CPU for now
         echo -e "${YELLOW}Apple Silicon detected - using CPU profile${NC}"
+        echo -e "${YELLOW}Note: Some services will use x86_64 emulation for compatibility${NC}"
     else
         # Intel Mac - check for AMD GPU
         if system_profiler SPDisplaysDataType | grep -q "AMD\|Radeon"; then
