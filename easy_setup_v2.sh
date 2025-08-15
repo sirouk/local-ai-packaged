@@ -517,10 +517,6 @@ except:
 fi
 rm -f /tmp/n8n-cookies.txt
 
-if [ -z "$N8N_API_KEY" ]; then
-    N8N_API_KEY=$(openssl rand -base64 32)
-fi
-
 # Import n8n credentials
 echo -e "${YELLOW}Importing n8n credentials...${NC}"
 HEADER_AUTH_ID=$(openssl rand -hex 8 | cut -c1-16)
@@ -528,44 +524,29 @@ SUPABASE_ID=$(openssl rand -hex 8 | cut -c1-16)
 OLLAMA_ID=$(openssl rand -hex 8 | cut -c1-16)
 N8N_API_ID=$(openssl rand -hex 8 | cut -c1-16)
 
-# Ensure all required variables are available
-if [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$NOTEBOOK_GENERATION_AUTH" ]; then
-    echo -e "${YELLOW}  Re-sourcing .env to ensure all variables are available...${NC}"
-    source .env
-fi
-
-# Verify critical variables
-if [ -z "$SERVICE_ROLE_KEY" ]; then
-    echo -e "${RED}ERROR: SERVICE_ROLE_KEY not available${NC}"
-    exit 1
-fi
-
-echo "  Using SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:0:30}..." # Show first 30 chars
-echo "  Using NOTEBOOK_GENERATION_AUTH: ${NOTEBOOK_GENERATION_AUTH:0:16}..." # Show first 16 chars
-
-# Create credentials JSON template and substitute variables
-cat > /tmp/n8n_credentials_template.json << 'EOF'
+# Create credentials JSON with direct variable substitution
+cat > /tmp/n8n_credentials.json << EOF
 [
   {
-    "id": "HEADER_AUTH_ID_PLACEHOLDER",
+    "id": "${HEADER_AUTH_ID}",
     "name": "Header Auth account",
     "type": "httpHeaderAuth",
     "data": {
       "name": "Authorization",
-      "value": "NOTEBOOK_GENERATION_AUTH_PLACEHOLDER"
+      "value": "${NOTEBOOK_GENERATION_AUTH}"
     }
   },
   {
-    "id": "SUPABASE_ID_PLACEHOLDER",
+    "id": "${SUPABASE_ID}",
     "name": "Supabase account",
     "type": "supabaseApi",
     "data": {
       "host": "http://kong:8000",
-      "serviceRoleKey": "SERVICE_ROLE_KEY_PLACEHOLDER"
+      "serviceRoleKey": "${SERVICE_ROLE_KEY}"
     }
   },
   {
-    "id": "OLLAMA_ID_PLACEHOLDER",
+    "id": "${OLLAMA_ID}",
     "name": "Ollama account",
     "type": "ollamaApi",
     "data": {
@@ -573,35 +554,20 @@ cat > /tmp/n8n_credentials_template.json << 'EOF'
     }
   },
   {
-    "id": "N8N_API_ID_PLACEHOLDER",
+    "id": "${N8N_API_ID}",
     "name": "n8n account",
     "type": "n8nApi",
     "data": {
-      "apiKey": "N8N_API_KEY_PLACEHOLDER",
+      "apiKey": "${N8N_API_KEY}",
       "baseUrl": "http://n8n:5678/api/v1"
     }
   }
 ]
 EOF
 
-# Use sed to replace placeholders with actual values 
-# Use different delimiter for SERVICE_ROLE_KEY to handle forward slashes in JWT
-sed -e "s/HEADER_AUTH_ID_PLACEHOLDER/${HEADER_AUTH_ID}/g" \
-    -e "s/NOTEBOOK_GENERATION_AUTH_PLACEHOLDER/${NOTEBOOK_GENERATION_AUTH}/g" \
-    -e "s/SUPABASE_ID_PLACEHOLDER/${SUPABASE_ID}/g" \
-    -e "s|SERVICE_ROLE_KEY_PLACEHOLDER|${SERVICE_ROLE_KEY}|g" \
-    -e "s/OLLAMA_ID_PLACEHOLDER/${OLLAMA_ID}/g" \
-    -e "s/N8N_API_ID_PLACEHOLDER/${N8N_API_ID}/g" \
-    -e "s/N8N_API_KEY_PLACEHOLDER/${N8N_API_KEY}/g" \
-    /tmp/n8n_credentials_template.json > /tmp/n8n_credentials.json
-
-docker cp /tmp/n8n_credentials.json n8n:/tmp/creds.json
-
-# Debug: Show credential JSON to verify variable expansion
-echo "  Verifying credential JSON structure..."
-head -20 /tmp/n8n_credentials.json | grep -E "(serviceRoleKey|host)" || echo "    No serviceRoleKey found in credential JSON"
 
 # Import credentials
+docker cp /tmp/n8n_credentials.json n8n:/tmp/creds.json
 IMPORT_RESULT=$(docker exec n8n n8n import:credentials --input=/tmp/creds.json 2>&1)
 if echo "$IMPORT_RESULT" | grep -q "error\|Error"; then
     echo -e "${YELLOW}  Warning: Credential import may have failed:${NC}"
