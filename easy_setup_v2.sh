@@ -449,6 +449,153 @@ done
 
 echo "✅ Supabase Edge Functions configured with webhook environment variables"
 
+# ---------------------------------------------------------
+# Native Ollama setup on macOS + proxy service for Docker
+# ---------------------------------------------------------
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}Setting up native Ollama and proxy service...${NC}"
+
+    # 1. Ensure Ollama CLI is installed
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo "  Ollama not found – installing with Homebrew..."
+        brew install ollama
+    fi
+
+    # 2. DON'T start Ollama here - let the Docker container manage it
+    echo "  Ollama will be managed by the Docker proxy service"
+    
+    # 3. Stop any existing Ollama processes first (clean slate)
+    echo "  Stopping any existing Ollama processes..."
+    pkill -f "ollama serve" 2>/dev/null || true
+    sleep 2
+
+    # 4. Pre-pull models while we can (before container manages Ollama)
+    echo "  Pre-pulling models $OLLAMA_MODEL and $EMBEDDING_MODEL..."
+    # Start Ollama temporarily just for pulling
+    ollama serve > /tmp/ollama-pull.log 2>&1 &
+    TEMP_OLLAMA_PID=$!
+    sleep 3
+    ollama pull "$OLLAMA_MODEL" || true
+    ollama pull "$EMBEDDING_MODEL" || true
+    # Stop the temporary Ollama
+    kill $TEMP_OLLAMA_PID 2>/dev/null || true
+    sleep 2
+
+    # 5. Create ollama proxy script that strictly manages host Ollama lifecycle
+    echo "  Creating Ollama proxy management script with strict lifecycle..."
+    mkdir -p ollama-proxy
+    cat > ollama-proxy/entrypoint.sh << 'PROXY_SCRIPT'
+#!/bin/sh
+set -e
+
+OLLAMA_PID_FILE="/tmp/ollama-proxy.pid"
+
+echo "Ollama proxy container starting..."
+
+# Function to start Ollama on host
+start_ollama() {
+    echo "Starting Ollama serve on host..."
+    # Use nohup and background to start ollama, capture PID
+    nohup sh -c 'ollama serve' > /tmp/ollama-proxy.log 2>&1 &
+    OLLAMA_PID=$!
+    echo $OLLAMA_PID > $OLLAMA_PID_FILE
+    echo "Started Ollama with PID: $OLLAMA_PID"
+    sleep 3
+}
+
+# Function to stop Ollama on host
+stop_ollama() {
+    echo "Stopping Ollama on host..."
+    if [ -f $OLLAMA_PID_FILE ]; then
+        PID=$(cat $OLLAMA_PID_FILE)
+        if kill -0 $PID 2>/dev/null; then
+            echo "Stopping Ollama process $PID..."
+            kill $PID 2>/dev/null || true
+            sleep 2
+            # Force kill if still running
+            if kill -0 $PID 2>/dev/null; then
+                echo "Force killing Ollama process $PID..."
+                kill -9 $PID 2>/dev/null || true
+            fi
+        fi
+        rm -f $OLLAMA_PID_FILE
+    fi
+    # Also kill any stray ollama processes
+    pkill -f "ollama serve" 2>/dev/null || true
+    echo "Ollama stopped"
+}
+
+# Function to cleanup on exit
+cleanup() {
+    echo "Ollama proxy container stopping..."
+    stop_ollama
+    exit 0
+}
+
+# Trap termination signals
+trap cleanup SIGTERM SIGINT EXIT
+
+# Check if Ollama is accessible
+check_ollama() {
+    nc -z host.docker.internal 11434 2>/dev/null
+}
+
+# Stop any existing Ollama first
+stop_ollama
+
+# Start fresh Ollama instance
+start_ollama
+
+# Wait for Ollama to be available
+echo "Waiting for host Ollama to be ready..."
+RETRIES=0
+MAX_RETRIES=30
+while ! check_ollama; do
+    RETRIES=$((RETRIES + 1))
+    if [ $RETRIES -ge $MAX_RETRIES ]; then
+        echo "ERROR: Host Ollama not responding after $MAX_RETRIES attempts"
+        cat /tmp/ollama-proxy.log
+        exit 1
+    fi
+    echo "  Attempt $RETRIES/$MAX_RETRIES - Ollama not ready, waiting..."
+    sleep 2
+done
+
+echo "Host Ollama is ready, starting proxy..."
+
+# Start socat in foreground (so container stops when socat stops)
+exec socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434
+PROXY_SCRIPT
+
+    chmod +x ollama-proxy/entrypoint.sh
+
+    # 6. Update docker-compose.yml: add lightweight proxy and remove heavy Ollama containers
+    DC_FILE="docker-compose.yml"
+
+    # Remove heavy Ollama-related services if they exist
+    for svc in ollama-cpu ollama-gpu ollama-gpu-amd ollama-pull-llama-cpu ollama-pull-llama-gpu ollama-pull-llama-gpu-amd; do
+        if yq eval ".services | has(\"$svc\")" "$DC_FILE" | grep -q "true"; then
+            yq eval "del(.services.\"$svc\")" -i "$DC_FILE"
+        fi
+    done
+
+    # Define/overwrite the proxy service with custom entrypoint
+    yq eval '.services.ollama.image = "alpine/socat"' -i "$DC_FILE"
+    yq eval '.services.ollama.container_name = "ollama"' -i "$DC_FILE"
+    yq eval '.services.ollama.restart = "unless-stopped"' -i "$DC_FILE"
+    yq eval '.services.ollama.expose = ["11434/tcp"]' -i "$DC_FILE"
+    yq eval '.services.ollama.volumes = ["./ollama-proxy/entrypoint.sh:/entrypoint.sh:ro"]' -i "$DC_FILE"
+    yq eval '.services.ollama.entrypoint = ["/entrypoint.sh"]' -i "$DC_FILE"
+    # Mount Docker socket to allow container to control host processes
+    yq eval '.services.ollama.volumes += ["/var/run/docker.sock:/var/run/docker.sock:ro"]' -i "$DC_FILE"
+    # Ensure the service starts under cpu profile so it is included when profile filtering is used
+    yq eval '.services.ollama.profiles = ["cpu"]' -i "$DC_FILE"
+
+    echo "  ✅ Proxy service 'ollama' configured with strict lifecycle management"
+    echo "     → Container starts = Ollama starts on host"
+    echo "     → Container stops = Ollama stops on host (forcefully if needed)"
+fi
+
 # Auto-detect compute profile
 echo -e "${YELLOW}Detecting compute profile...${NC}"
 PROFILE="cpu"
