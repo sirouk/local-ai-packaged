@@ -995,6 +995,19 @@ Service Access URLs:
 - Supabase: http://${ACCESS_HOST}:8000
 - n8n: http://${ACCESS_HOST}:5678
 - InsightsLM: http://${ACCESS_HOST}:3010
+
+N8N Configuration Required:
+============================
+Please update the Supabase credentials in n8n:
+
+SERVICE_ROLE_KEY for Supabase:
+${SERVICE_ROLE_KEY}
+
+Steps:
+1. Go to: http://${ACCESS_HOST}:5678/credentials
+2. Find 'Supabase account' credential  
+3. Click Edit → Update 'Service Role Key' field
+4. Paste the SERVICE_ROLE_KEY above and Save
 EOF
 
 # Save current .env for future comparison
@@ -1015,6 +1028,20 @@ echo "📓 InsightsLM: http://${ACCESS_HOST}:3010"
 echo ""
 echo "🔐 Login Credentials saved to: unified_credentials.txt"
 echo "   Email: ${UNIFIED_EMAIL}"
+echo "   📁 File location: $(pwd)/unified_credentials.txt"
+echo ""
+echo "🔧 N8N Configuration Required:"
+echo "   Please update the Supabase credentials in n8n with this SERVICE_ROLE_KEY:"
+echo ""
+echo -e "   ${GREEN}${SERVICE_ROLE_KEY}${NC}"
+echo ""
+echo "   Steps:"
+echo "   1. Go to: http://${ACCESS_HOST}:5678/credentials"
+echo "   2. Find 'Supabase account' credential"
+echo "   3. Click Edit → Update 'Service Role Key' field"
+echo "   4. Paste the key above and Save"
+echo ""
+echo "   💡 To view this key again later, run: grep SERVICE_ROLE_KEY .env"
 echo ""
 echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"
