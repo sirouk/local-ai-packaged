@@ -258,14 +258,14 @@ else
     echo "  N8N_SECURE_COOKIE already set"
 fi
 
-# Check if N8N_RUNNERS_ENABLED exists in the environment array
-if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_RUNNERS_ENABLED=*")' docker-compose.yml | grep -q "N8N_RUNNERS_ENABLED"; then
-    # Add N8N_RUNNERS_ENABLED=true to the environment array
-    yq eval '.["x-n8n"].environment += ["N8N_RUNNERS_ENABLED=true"]' -i docker-compose.yml
-    echo "  Added N8N_RUNNERS_ENABLED=true to enable task runners"
-else
-    echo "  N8N_RUNNERS_ENABLED already set"
-fi
+# # Check if N8N_RUNNERS_ENABLED exists in the environment array
+# if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_RUNNERS_ENABLED=*")' docker-compose.yml | grep -q "N8N_RUNNERS_ENABLED"; then
+#     # Add N8N_RUNNERS_ENABLED=true to the environment array
+#     yq eval '.["x-n8n"].environment += ["N8N_RUNNERS_ENABLED=true"]' -i docker-compose.yml
+#     echo "  Added N8N_RUNNERS_ENABLED=true to enable task runners"
+# else
+#     echo "  N8N_RUNNERS_ENABLED already set"
+# fi
 
 # Check if N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS exists in the environment array
 if ! yq eval '.["x-n8n"].environment[] | select(. == "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=*")' docker-compose.yml | grep -q "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS"; then
