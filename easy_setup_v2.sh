@@ -497,8 +497,8 @@ if pgrep -f "ollama serve" >/dev/null 2>&1; then
   exit 0
 fi
 
-# Start Ollama
-nohup ollama serve > "$LOG_FILE" 2>&1 &
+# Start Ollama with proper host binding for Docker access
+nohup env OLLAMA_HOST=0.0.0.0:11434 ollama serve > "$LOG_FILE" 2>&1 &
 HOST_PID=$!
 echo $HOST_PID > "$PID_FILE"
 
