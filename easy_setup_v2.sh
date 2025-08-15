@@ -623,14 +623,24 @@ if [ -n "$IMPORT_WORKFLOW_ID" ]; then
     sleep 10
 fi
 
-# Update Ollama model references in workflows if not using default
-echo -e "${YELLOW}Updating Ollama model references in workflows...${NC}"
+# Update Ollama model references in workflows to use selected models
+echo -e "${YELLOW}Updating Ollama model references in imported workflows...${NC}"
 
-# Update main model references
-docker exec supabase-db psql -U postgres -d postgres -c "
+# Wait a moment for workflow import to complete fully
+sleep 5
+
+# Check how many InsightsLM workflows were imported
+WORKFLOW_COUNT=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT COUNT(*) FROM workflow_entity WHERE name LIKE 'InsightsLM%';" 2>/dev/null | tr -d '\r')
+echo "  Found $WORKFLOW_COUNT InsightsLM workflows to update"
+
+# Update main model references (qwen3:8b-q4_K_M -> user selected model)
+echo "  Updating main model references from qwen3:8b-q4_K_M to $OLLAMA_MODEL..."
+MAIN_MODEL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
 UPDATE workflow_entity 
 SET nodes = REPLACE(nodes::text, '\"model\": \"qwen3:8b-q4_K_M\"', '\"model\": \"$OLLAMA_MODEL\"')::jsonb
-WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%qwen3:8b-q4_K_M%';" >/dev/null 2>&1
+WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%qwen3:8b-q4_K_M%'
+RETURNING id;" 2>/dev/null | wc -l)
+echo "    Updated main model in $MAIN_MODEL_UPDATES workflows"
 
 # Update embedding model references - handle both with and without :latest suffix
 EMBEDDING_MODEL_BASE=$(echo "$EMBEDDING_MODEL" | sed 's/:latest$//')
@@ -640,17 +650,38 @@ else
     EMBEDDING_MODEL_WITH_LATEST="$EMBEDDING_MODEL"
 fi
 
-docker exec supabase-db psql -U postgres -d postgres -c "
+echo "  Updating embedding model references to $EMBEDDING_MODEL..."
+
+# Update nomic-embed-text:latest references
+EMBED_UPDATES_1=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
 UPDATE workflow_entity 
 SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text:latest\"', '\"model\": \"$EMBEDDING_MODEL_WITH_LATEST\"')::jsonb
-WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%nomic-embed-text:latest%';" >/dev/null 2>&1
+WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%nomic-embed-text:latest%'
+RETURNING id;" 2>/dev/null | wc -l)
 
-docker exec supabase-db psql -U postgres -d postgres -c "
+# Update nomic-embed-text references (without :latest)
+EMBED_UPDATES_2=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
 UPDATE workflow_entity 
 SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text\"', '\"model\": \"$EMBEDDING_MODEL\"')::jsonb
-WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"nomic-embed-text\"%';" >/dev/null 2>&1
+WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"nomic-embed-text\"%' AND nodes::text NOT LIKE '%nomic-embed-text:latest%'
+RETURNING id;" 2>/dev/null | wc -l)
 
-echo "  Updated workflow model references to use: $OLLAMA_MODEL and $EMBEDDING_MODEL"
+echo "    Updated embedding model in $((EMBED_UPDATES_1 + EMBED_UPDATES_2)) workflow instances"
+
+# Verify updates were successful
+REMAINING_OLD_MODELS=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+SELECT COUNT(*) FROM workflow_entity 
+WHERE name LIKE 'InsightsLM%' 
+AND (nodes::text LIKE '%qwen3:8b-q4_K_M%' OR nodes::text LIKE '%nomic-embed-text%');" 2>/dev/null | tr -d '\r')
+
+if [ "$REMAINING_OLD_MODELS" = "0" ]; then
+    echo -e "${GREEN}✅ Successfully updated all workflow model references${NC}"
+    echo "    Main model: $OLLAMA_MODEL"
+    echo "    Embedding model: $EMBEDDING_MODEL"
+else
+    echo -e "${YELLOW}⚠️  $REMAINING_OLD_MODELS workflows may still contain old model references${NC}"
+    echo "    This may be normal if workflows use different model configurations"
+fi
 
 
 
