@@ -416,6 +416,21 @@ if [ "$IS_MACOS" = true ]; then
             yq eval '.services.storage.environment.TUS_URL_PATH = "/storage/v1/upload/resumable"' -i supabase/docker/docker-compose.yml
         fi
         
+        # Add additional xattr disable flags for macOS
+        if ! yq eval '.services.storage.environment | has("STORAGE_FILE_SYSTEM_DISABLE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.STORAGE_FILE_SYSTEM_DISABLE_XATTR = "true"' -i supabase/docker/docker-compose.yml
+        fi
+        
+        if ! yq eval '.services.storage.environment | has("FILE_STORAGE_BACKEND_DISABLE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
+            yq eval '.services.storage.environment.FILE_STORAGE_BACKEND_DISABLE_XATTR = "true"' -i supabase/docker/docker-compose.yml
+        fi
+        
+        # Remove :z volume mount suffix that causes extended attribute issues on macOS
+        if yq eval '.services.storage.volumes[]' supabase/docker/docker-compose.yml | grep -q ":z"; then
+            echo "  Removing SELinux volume mount options and using delegated mount for macOS..."
+            yq eval '.services.storage.volumes = ["./volumes/storage:/var/lib/storage:delegated"]' -i supabase/docker/docker-compose.yml
+        fi
+        
         echo "  ✅ Storage configured for macOS compatibility"
     fi
 fi
