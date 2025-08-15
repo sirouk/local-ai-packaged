@@ -588,7 +588,8 @@ WATCH_OLLAMA
     # Define/overwrite the proxy service (pure socat; no host control inside container)
     yq eval '.services.ollama.image = "alpine/socat"' -i "$DC_FILE"
     yq eval '.services.ollama.container_name = "ollama"' -i "$DC_FILE"
-    yq eval '.services.ollama.command = ["socat","TCP-LISTEN:11434,fork,reuseaddr","TCP:host.docker.internal:11434"]' -i "$DC_FILE"
+    # Use single string command to avoid argument parsing issues
+    yq eval '.services.ollama.command = "socat TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434"' -i "$DC_FILE"
     yq eval '.services.ollama.restart = "unless-stopped"' -i "$DC_FILE"
     yq eval '.services.ollama.expose = ["11434/tcp"]' -i "$DC_FILE"
     # Ensure the service starts under cpu profile so it is included when profile filtering is used
