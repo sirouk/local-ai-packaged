@@ -21,7 +21,7 @@ INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
 INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/sirouk/insights-lm-local-package"
 
 # Default Ollama model configuration
-DEFAULT_OLLAMA_MODEL="deepseek-ai:DeepSeek-R1-0528-Qwen3-8B"
+DEFAULT_OLLAMA_MODEL="qwen3:8b-q4_K_M"
 DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
 
 echo -e "${GREEN}=== InsightsLM Local AI Setup Script ===${NC}"
@@ -112,7 +112,7 @@ EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
 
 if [[ ! "$USE_DEFAULT" =~ ^[Yy]$ ]]; then
     echo ""
-    read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, deepseek-ai/DeepSeek-R1-0528-Qwen3-8B): " -r CUSTOM_MODEL
+    read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, qwen3:8b-q4_K_M): " -r CUSTOM_MODEL
     if [ -n "$CUSTOM_MODEL" ]; then
         OLLAMA_MODEL="$CUSTOM_MODEL"
         echo -e "${GREEN}Using custom model: $OLLAMA_MODEL${NC}"
