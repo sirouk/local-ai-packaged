@@ -37,167 +37,96 @@ sudo apt update
 sudo apt install -y python3 python3-venv net-tools python3-pip curl git jq
 snap install --classic yq
 
-# Check for existing installation
-WIPE_CLEAN="N"
+# Always start fresh with easy_setup_v2.sh
 if [ -d "$HOME/local-ai-packaged" ]; then
     echo -e "${YELLOW}Found existing installation at $HOME/local-ai-packaged${NC}"
-    read -p "Do you want to wipe and start fresh? (y/N): " -r RESPONSE
-    RESPONSE=${RESPONSE:-N}
-    if [[ "$RESPONSE" =~ ^[Yy]$ ]]; then
-        WIPE_CLEAN="Y"
-    fi
-else
-    WIPE_CLEAN="Y"  # Fresh install if directory doesn't exist
+    echo -e "${GREEN}easy_setup_v2.sh always starts fresh - wiping and reinstalling...${NC}"
 fi
 
-# Handle wipe or update
-if [ "$WIPE_CLEAN" = "Y" ]; then
-    echo -e "${YELLOW}Starting fresh installation...${NC}"
-    
-    if [ -d "$HOME/local-ai-packaged" ]; then
-        cd "$HOME/local-ai-packaged"
-        
-        echo "Performing comprehensive cleanup for this project only..."
-        
-        echo "  → Stopping project containers..."
-        # Stop containers by name patterns and compose project
-        docker compose -p localai down 2>/dev/null || true
-        docker stop $(docker ps -q --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j") 2>/dev/null || echo "    No project containers running"
-        
-        echo "  → Removing project containers..."
-        docker rm -f $(docker ps -aq --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j") 2>/dev/null || echo "    No project containers to remove"
-        
-        echo "  → Removing project volumes..."
-        # Remove volumes by name patterns (including localai_ prefix patterns)
-        docker volume rm $(docker volume ls -q | grep -E "(localai_|localai-|supabase|n8n_storage|ollama_storage|qdrant_storage|open-webui|flowise|caddy-data|caddy-config|valkey-data|langfuse|whisper_cache|db-config)") 2>/dev/null || echo "    No project volumes to remove"
-        
-        echo "  → Removing filesystem residuals..."
-        # Remove ~/.flowise directory created by flowise service bind mount
-        if [ -d "$HOME/.flowise" ]; then
-            rm -rf "$HOME/.flowise"
-            echo "    Removed ~/.flowise directory"
-        else
-            echo "    No ~/.flowise directory to remove"
-        fi
-        
-        echo "  → Removing project networks..."
-        # Remove networks by name patterns  
-        docker network rm $(docker network ls -q --filter "name=localai" --filter "name=supabase") 2>/dev/null || echo "    No project networks to remove"
-        
-        echo "  → Cleaning up orphaned resources..."
-        # Only prune orphaned resources, not all build cache
-        docker container prune -f 2>/dev/null || true
-        docker volume prune -f 2>/dev/null || true
-        docker network prune -f 2>/dev/null || true
-        
-        echo "✅ Comprehensive Docker cleanup completed"
-        
-        cd "$HOME"
-        rm -rf "$HOME/local-ai-packaged"
-    fi
-    
-    # Clone fresh repo
-    echo -e "${YELLOW}Cloning local-ai-packaged repository...${NC}"
-    git clone "$LOCAL_AI_REPO"
+# Start fresh installation
+echo -e "${YELLOW}Starting fresh installation...${NC}"
+
+if [ -d "$HOME/local-ai-packaged" ]; then
     cd "$HOME/local-ai-packaged"
     
-    # Clone insights-lm-local-package
-    echo -e "${YELLOW}Cloning insights-lm-local-package repository...${NC}"
-    git clone "$INSIGHTS_LM_REPO"
+    echo "Performing comprehensive cleanup for this project only..."
     
-else
-    echo -e "${YELLOW}Updating existing installation...${NC}"
+    echo "  → Stopping project containers..."
+    # Stop containers by name patterns and compose project
+    docker compose -p localai down 2>/dev/null || true
+    docker stop $(docker ps -q --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j") 2>/dev/null || echo "    No project containers running"
     
-    # Update main repo
-    cd "$HOME/local-ai-packaged"
-    echo "Resetting and updating local-ai-packaged..."
-    git reset --hard
-    git pull
+    echo "  → Removing project containers..."
+    docker rm -f $(docker ps -aq --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j") 2>/dev/null || echo "    No project containers to remove"
     
-    # Update insights package
-    if [ -d "insights-lm-local-package" ]; then
-        echo "Resetting and updating insights-lm-local-package..."
-        cd insights-lm-local-package
-        git reset --hard
-        git pull
-        cd ..
+    echo "  → Removing project volumes..."
+    # Remove volumes by name patterns (including localai_ prefix patterns)
+    docker volume rm $(docker volume ls -q | grep -E "(localai_|localai-|supabase|n8n_storage|ollama_storage|qdrant_storage|open-webui|flowise|caddy-data|caddy-config|valkey-data|langfuse|whisper_cache|db-config)") 2>/dev/null || echo "    No project volumes to remove"
+    
+    echo "  → Removing filesystem residuals..."
+    # Remove ~/.flowise directory created by flowise service bind mount
+    if [ -d "$HOME/.flowise" ]; then
+        rm -rf "$HOME/.flowise"
+        echo "    Removed ~/.flowise directory"
     else
-        echo "Cloning insights-lm-local-package..."
-        git clone "$INSIGHTS_LM_REPO"
+        echo "    No ~/.flowise directory to remove"
     fi
+    
+    echo "  → Removing project networks..."
+    # Remove networks by name patterns  
+    docker network rm $(docker network ls -q --filter "name=localai" --filter "name=supabase") 2>/dev/null || echo "    No project networks to remove"
+    
+    echo "  → Cleaning up orphaned resources..."
+    # Only prune orphaned resources, not all build cache
+    docker container prune -f 2>/dev/null || true
+    docker volume prune -f 2>/dev/null || true
+    docker network prune -f 2>/dev/null || true
+    
+    echo "✅ Comprehensive Docker cleanup completed"
+    
+    cd "$HOME"
+    rm -rf "$HOME/local-ai-packaged"
 fi
+
+# Clone fresh repo
+echo -e "${YELLOW}Cloning local-ai-packaged repository...${NC}"
+git clone "$LOCAL_AI_REPO"
+cd "$HOME/local-ai-packaged"
+
+# Clone insights-lm-local-package
+echo -e "${YELLOW}Cloning insights-lm-local-package repository...${NC}"
+git clone "$INSIGHTS_LM_REPO"
 
 cd "$HOME/local-ai-packaged"
 
-# Check for existing model configuration
-if [ -f ".env" ] && grep -q "^OLLAMA_MODEL=" .env && [ "$WIPE_CLEAN" != "Y" ]; then
-    # Load existing model configuration
-    EXISTING_OLLAMA_MODEL=$(grep "^OLLAMA_MODEL=" .env | cut -d'=' -f2)
-    EXISTING_EMBEDDING_MODEL=$(grep "^EMBEDDING_MODEL=" .env | cut -d'=' -f2)
-    
-    if [ -n "$EXISTING_OLLAMA_MODEL" ]; then
-        echo -e "${YELLOW}Found existing model configuration:${NC}"
-        echo -e "  Main model: ${GREEN}$EXISTING_OLLAMA_MODEL${NC}"
-        echo -e "  Embedding model: ${GREEN}$EXISTING_EMBEDDING_MODEL${NC}"
-        echo ""
-        read -p "Keep existing model configuration? (Y/n): " -r KEEP_EXISTING
-        KEEP_EXISTING=${KEEP_EXISTING:-Y}
-        
-        if [[ "$KEEP_EXISTING" =~ ^[Yy]$ ]]; then
-            OLLAMA_MODEL="$EXISTING_OLLAMA_MODEL"
-            EMBEDDING_MODEL="$EXISTING_EMBEDDING_MODEL"
-        else
-            # Ask for new configuration
-            echo ""
-            read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, deepseek-ai/DeepSeek-R1-0528-Qwen3-8B): " -r CUSTOM_MODEL
-            if [ -n "$CUSTOM_MODEL" ]; then
-                OLLAMA_MODEL="$CUSTOM_MODEL"
-            else
-                OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
-            fi
-            
-            read -p "Enter the embedding model to use (default: $DEFAULT_EMBEDDING_MODEL): " -r CUSTOM_EMBEDDING
-            if [ -n "$CUSTOM_EMBEDDING" ]; then
-                EMBEDDING_MODEL="$CUSTOM_EMBEDDING"
-            else
-                EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
-            fi
-        fi
-    else
-        # No valid existing config, use defaults
-        OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
-        EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
-    fi
-else
-    # Fresh install or no existing config - ask user
-    echo -e "${YELLOW}Ollama Model Configuration${NC}"
-    echo -e "Default model: ${GREEN}$DEFAULT_OLLAMA_MODEL${NC}"
-    echo -e "Default embedding model: ${GREEN}$DEFAULT_EMBEDDING_MODEL${NC}"
+# Ollama Model Configuration
+echo -e "${YELLOW}Ollama Model Configuration${NC}"
+echo -e "Default model: ${GREEN}$DEFAULT_OLLAMA_MODEL${NC}"
+echo -e "Default embedding model: ${GREEN}$DEFAULT_EMBEDDING_MODEL${NC}"
+echo ""
+read -p "Do you want to use the default models? (Y/n): " -r USE_DEFAULT
+USE_DEFAULT=${USE_DEFAULT:-Y}
+
+OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
+EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
+
+if [[ ! "$USE_DEFAULT" =~ ^[Yy]$ ]]; then
     echo ""
-    read -p "Do you want to use the default models? (Y/n): " -r USE_DEFAULT
-    USE_DEFAULT=${USE_DEFAULT:-Y}
+    read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, deepseek-ai/DeepSeek-R1-0528-Qwen3-8B): " -r CUSTOM_MODEL
+    if [ -n "$CUSTOM_MODEL" ]; then
+        OLLAMA_MODEL="$CUSTOM_MODEL"
+        echo -e "${GREEN}Using custom model: $OLLAMA_MODEL${NC}"
+    else
+        echo -e "${YELLOW}No model specified, using default: $OLLAMA_MODEL${NC}"
+    fi
     
-    OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
-    EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
-    
-    if [[ ! "$USE_DEFAULT" =~ ^[Yy]$ ]]; then
-        echo ""
-        read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, deepseek-ai/DeepSeek-R1-0528-Qwen3-8B): " -r CUSTOM_MODEL
-        if [ -n "$CUSTOM_MODEL" ]; then
-            OLLAMA_MODEL="$CUSTOM_MODEL"
-            echo -e "${GREEN}Using custom model: $OLLAMA_MODEL${NC}"
-        else
-            echo -e "${YELLOW}No model specified, using default: $OLLAMA_MODEL${NC}"
-        fi
-        
-        echo ""
-        read -p "Enter the embedding model to use (default: $DEFAULT_EMBEDDING_MODEL): " -r CUSTOM_EMBEDDING
-        if [ -n "$CUSTOM_EMBEDDING" ]; then
-            EMBEDDING_MODEL="$CUSTOM_EMBEDDING"
-            echo -e "${GREEN}Using custom embedding model: $EMBEDDING_MODEL${NC}"
-        else
-            echo -e "${YELLOW}Using default embedding model: $EMBEDDING_MODEL${NC}"
-        fi
+    echo ""
+    read -p "Enter the embedding model to use (default: $DEFAULT_EMBEDDING_MODEL): " -r CUSTOM_EMBEDDING
+    if [ -n "$CUSTOM_EMBEDDING" ]; then
+        EMBEDDING_MODEL="$CUSTOM_EMBEDDING"
+        echo -e "${GREEN}Using custom embedding model: $EMBEDDING_MODEL${NC}"
+    else
+        echo -e "${YELLOW}Using default embedding model: $EMBEDDING_MODEL${NC}"
     fi
 fi
 
@@ -291,146 +220,68 @@ OLLAMA_COMMAND="sleep 3; OLLAMA_HOST=ollama:11434 ollama pull $OLLAMA_MODEL; OLL
 yq eval "."x-init-ollama".command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
 echo "  Updated x-init-ollama to pull: $OLLAMA_MODEL and $EMBEDDING_MODEL"
 
-# Generate .env file if fresh install
-if [ "$WIPE_CLEAN" = "Y" ]; then
-    echo -e "${YELLOW}Generating environment configuration...${NC}"
-    cp -f .env.example .env
-    
-    # Generate all required secrets
-    N8N_ENCRYPTION_KEY=$(openssl rand -hex 16)
-    N8N_USER_MANAGEMENT_JWT_SECRET=$(openssl rand -hex 16)
-    POSTGRES_PASSWORD=$(openssl rand -hex 16)
-    JWT_SECRET=$(openssl rand -hex 16)
-    DASHBOARD_PASSWORD=$(openssl rand -hex 16)
-    CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
-    MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
-    LANGFUSE_SALT=$(openssl rand -hex 16)
-    NEXTAUTH_SECRET=$(openssl rand -hex 16)
-    ENCRYPTION_KEY=$(openssl rand -hex 32)
-    DASHBOARD_USERNAME="supabase"
-    NEO4J_AUTH="neo4j/$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
-    #SECRET_KEY_BASE=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
-    #VAULT_ENC_KEY=$(openssl rand -hex 16)
-    #VAULT_HMAC_KEY=$(openssl rand -hex 16)
-    #LOGFLARE_PUBLIC_ACCESS_TOKEN=$(openssl rand -hex 16)
-    #LOGFLARE_PRIVATE_ACCESS_TOKEN=$(openssl rand -hex 16)
-    NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
-    
-    # Update .env file
-    sed -i "s/N8N_ENCRYPTION_KEY=.*/N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY/" .env
-    sed -i "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_USER_MANAGEMENT_JWT_SECRET/" .env
-    sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
-    sed -i "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
-    sed -i "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
-    sed -i "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
-    sed -i "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
-    sed -i "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
-    sed -i "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
-    sed -i "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$NEXTAUTH_SECRET/" .env
-    sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-    sed -i "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
-    sed -i "s|NEO4J_AUTH=.*|NEO4J_AUTH=\"$NEO4J_AUTH\"|" .env
-    #sed -i "s/SECRET_KEY_BASE=.*/SECRET_KEY_BASE=$SECRET_KEY_BASE/" .env
-    #sed -i "s/VAULT_ENC_KEY=.*/VAULT_ENC_KEY=$VAULT_ENC_KEY/" .env
-    #sed -i "s/VAULT_HMAC_KEY=.*/VAULT_HMAC_KEY=$VAULT_HMAC_KEY/" .env
-    #sed -i "s/LOGFLARE_PUBLIC_ACCESS_TOKEN=.*/LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_ACCESS_TOKEN/" .env
-    #sed -i "s/LOGFLARE_PRIVATE_ACCESS_TOKEN=.*/LOGFLARE_PRIVATE_ACCESS_TOKEN=$LOGFLARE_PRIVATE_ACCESS_TOKEN/" .env
-    
-    # # Add FLOWISE credentials
-    # FLOWISE_PASSWORD=$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)
-    # echo "FLOWISE_USERNAME=admin" >> .env
-    # echo "FLOWISE_PASSWORD=$FLOWISE_PASSWORD" >> .env
-    
-    # Concatenate InsightsLM environment variables from .env.copy
-    echo "" >> .env
-    echo "# InsightsLM Environment Variables" >> .env
-    cat insights-lm-local-package/.env.copy >> .env
-    
-    # Update NOTEBOOK_GENERATION_AUTH to use our generated value (used for Header Auth)
-    sed -i "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
-    
-    # Add Ollama model configuration to .env
-    echo "" >> .env
-    echo "# Ollama Model Configuration" >> .env
-    echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
-    echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
-    
-    # Update STUDIO defaults
-    sed -i 's/STUDIO_DEFAULT_ORGANIZATION=.*/STUDIO_DEFAULT_ORGANIZATION="InsightsLM"/' .env
-    sed -i 's/STUDIO_DEFAULT_PROJECT=.*/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
-    
-    # Generate JWT keys
-    ANON_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'anon', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
-    SERVICE_ROLE_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'service_role', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
-    
-    sed -i "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
-    sed -i "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
-    
-    # Update URLs with external IP
-    IPV4_ADDRESS=$(curl -s ipinfo.io/ip)
-    # sed -i "s|^SITE_URL=.*|SITE_URL=http://${IPV4_ADDRESS}:3000|" .env
-    sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
-    # sed -i "s|^SUPABASE_PUBLIC_URL=.*|SUPABASE_PUBLIC_URL=http://${IPV4_ADDRESS}:8000|" .env
-    
+# Generate .env file
+echo -e "${YELLOW}Generating environment configuration...${NC}"
+cp -f .env.example .env
 
-else
-    # Update external IP for existing installation
-    IPV4_ADDRESS=$(curl -s ipinfo.io/ip)
-    # sed -i "s|^SITE_URL=.*|SITE_URL=http://${IPV4_ADDRESS}:3000|" .env
-    sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
-    # sed -i "s|^SUPABASE_PUBLIC_URL=.*|SUPABASE_PUBLIC_URL=http://${IPV4_ADDRESS}:8000|" .env
-fi
+# Generate all required secrets
+N8N_ENCRYPTION_KEY=$(openssl rand -hex 16)
+N8N_USER_MANAGEMENT_JWT_SECRET=$(openssl rand -hex 16)
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+JWT_SECRET=$(openssl rand -hex 16)
+DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
+MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
+LANGFUSE_SALT=$(openssl rand -hex 16)
+NEXTAUTH_SECRET=$(openssl rand -hex 16)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+DASHBOARD_USERNAME="supabase"
+NEO4J_AUTH="neo4j/$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
+NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
 
-# Ensure InsightsLM variables exist (for both fresh and existing installations)
-echo -e "${YELLOW}Ensuring InsightsLM environment variables are present...${NC}"
+# Update .env file with secrets
+sed -i "s/N8N_ENCRYPTION_KEY=.*/N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY/" .env
+sed -i "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_USER_MANAGEMENT_JWT_SECRET/" .env
+sed -i "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
+sed -i "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
+sed -i "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
+sed -i "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
+sed -i "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
+sed -i "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
+sed -i "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
+sed -i "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$NEXTAUTH_SECRET/" .env
+sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
+sed -i "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
+sed -i "s|NEO4J_AUTH=.*|NEO4J_AUTH=\"$NEO4J_AUTH\"|" .env
 
-# For existing installations, concatenate .env.copy if InsightsLM variables are missing
-if ! grep -q "^NOTEBOOK_CHAT_URL=" .env || ! grep -q "^NOTEBOOK_GENERATION_URL=" .env; then
-    echo "  Adding missing InsightsLM environment variables from .env.copy..."
-    echo "" >> .env
-    echo "# InsightsLM Environment Variables" >> .env
-    cat insights-lm-local-package/.env.copy >> .env
-    
-    # Generate and update NOTEBOOK_GENERATION_AUTH if it doesn't exist or use existing one
-    if ! grep -q "^NOTEBOOK_GENERATION_AUTH=" .env; then
-        if [ -z "$NOTEBOOK_GENERATION_AUTH" ]; then
-            NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
-        fi
-        # Use | as delimiter to avoid issues with special characters
-        sed -i "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
-        echo "  Generated new NOTEBOOK_GENERATION_AUTH"
-    else
-        echo "  Using existing NOTEBOOK_GENERATION_AUTH"
-        # Load existing value for later use
-        NOTEBOOK_GENERATION_AUTH=$(grep "^NOTEBOOK_GENERATION_AUTH=" .env | cut -d'=' -f2)
-    fi
-fi
+# Concatenate InsightsLM environment variables from .env.copy
+echo "" >> .env
+echo "# InsightsLM Environment Variables" >> .env
+cat insights-lm-local-package/.env.copy >> .env
 
-# Ensure Ollama model configuration exists in .env
-if ! grep -q "^OLLAMA_MODEL=" .env; then
-    echo "  Adding Ollama model configuration to .env..."
-    echo "" >> .env
-    echo "# Ollama Model Configuration" >> .env
-    echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
-    echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
-else
-    # Update existing model configuration
-    sed -i "s|^OLLAMA_MODEL=.*|OLLAMA_MODEL=$OLLAMA_MODEL|" .env
-    sed -i "s|^EMBEDDING_MODEL=.*|EMBEDDING_MODEL=$EMBEDDING_MODEL|" .env
-    echo "  Updated Ollama model configuration in .env"
-fi
+# Update NOTEBOOK_GENERATION_AUTH to use our generated value (used for Header Auth)
+sed -i "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
 
-# # Ensure FLOWISE credentials exist (commented out per user requirements)
-# if ! grep -q "^FLOWISE_USERNAME=" .env; then
-#     echo "FLOWISE_USERNAME=admin" >> .env
-#     echo "  Added FLOWISE_USERNAME"
-# fi
+# Add Ollama model configuration to .env
+echo "" >> .env
+echo "# Ollama Model Configuration" >> .env
+echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
+echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
 
-# if ! grep -q "^FLOWISE_PASSWORD=" .env; then
-#     FLOWISE_PASSWORD=$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)
-#     echo "FLOWISE_PASSWORD=$FLOWISE_PASSWORD" >> .env
-#     echo "  Added FLOWISE_PASSWORD"
-# fi
+# Update STUDIO defaults
+sed -i 's/STUDIO_DEFAULT_ORGANIZATION=.*/STUDIO_DEFAULT_ORGANIZATION="InsightsLM"/' .env
+sed -i 's/STUDIO_DEFAULT_PROJECT=.*/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
+
+# Generate JWT keys
+ANON_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'anon', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
+SERVICE_ROLE_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'service_role', 'iss': 'supabase', 'iat': int(time.time()), 'exp': int(time.time()) + (5 * 365 * 24 * 60 * 60)}, '$JWT_SECRET', algorithm='HS256'))")
+
+sed -i "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
+sed -i "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
+
+# Update URLs with external IP
+IPV4_ADDRESS=$(curl -s ipinfo.io/ip)
+sed -i "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${IPV4_ADDRESS}:8000|" .env
 
 # Source the .env file
 source .env
@@ -453,6 +304,47 @@ fi
 
 # Copy .env to supabase/docker
 cp .env supabase/docker/.env
+
+# Configure Supabase Edge Functions environment variables BEFORE starting services
+echo -e "${YELLOW}Configuring Supabase Edge Functions environment variables...${NC}"
+
+# Check if functions service exists in supabase docker-compose
+if ! yq eval '.services | has("functions")' supabase/docker/docker-compose.yml | grep -q "true"; then
+    echo "    Creating functions service in supabase docker-compose..."
+    yq eval '.services.functions = {}' -i supabase/docker/docker-compose.yml
+fi
+
+# Check if environment exists in functions service
+if ! yq eval '.services.functions | has("environment")' supabase/docker/docker-compose.yml | grep -q "true"; then
+    echo "    Creating environment section for functions service..."
+    yq eval '.services.functions.environment = {}' -i supabase/docker/docker-compose.yml
+fi
+
+# Add environment variables from copy file using a simple, safe approach
+echo "    Adding webhook environment variables..."
+
+# Define the environment variables we need to add
+ENV_VARS=(
+    "NOTEBOOK_CHAT_URL"
+    "NOTEBOOK_GENERATION_URL" 
+    "AUDIO_GENERATION_WEBHOOK_URL"
+    "DOCUMENT_PROCESSING_WEBHOOK_URL"
+    "ADDITIONAL_SOURCES_WEBHOOK_URL"
+    "NOTEBOOK_GENERATION_AUTH"
+)
+
+for env_var in "${ENV_VARS[@]}"; do
+    # Check if the environment variable already exists
+    if ! yq eval ".services.functions.environment | has(\"$env_var\")" supabase/docker/docker-compose.yml | grep -q "true"; then
+        # Add the environment variable with shell variable syntax
+        yq eval ".services.functions.environment.\"$env_var\" = \"\${$env_var}\"" -i supabase/docker/docker-compose.yml
+        echo "    Added environment variable: $env_var"
+    else
+        echo "    Environment variable $env_var already exists, skipping"
+    fi
+done
+
+echo "✅ Supabase Edge Functions configured with webhook environment variables"
 
 # Auto-detect compute profile
 echo -e "${YELLOW}Detecting compute profile...${NC}"
@@ -498,87 +390,15 @@ echo -e "${YELLOW}Deploying Supabase functions...${NC}"
 mkdir -p ./supabase/docker/volumes/functions/
 cp -rf ./insights-lm-local-package/supabase-functions/* ./supabase/docker/volumes/functions/
 
-# Merge supabase docker-compose environment using yq
-echo "  Merging Supabase function environment variables..."
 
-# Check if functions service exists in supabase docker-compose
-if ! yq eval '.services | has("functions")' supabase/docker/docker-compose.yml | grep -q "true"; then
-    echo "    Creating functions service in supabase docker-compose..."
-    yq eval '.services.functions = {}' -i supabase/docker/docker-compose.yml
-fi
-
-# Check if environment exists in functions service
-if ! yq eval '.services.functions | has("environment")' supabase/docker/docker-compose.yml | grep -q "true"; then
-    echo "    Creating environment section for functions service..."
-    yq eval '.services.functions.environment = {}' -i supabase/docker/docker-compose.yml
-fi
-
-# Add environment variables from copy file using a simple, safe approach
-echo "    Adding environment variables from supabase-docker-compose.copy.yml..."
-
-# Define the environment variables we need to add (avoiding yq parsing issues)
-ENV_VARS=(
-    "NOTEBOOK_CHAT_URL"
-    "NOTEBOOK_GENERATION_URL" 
-    "AUDIO_GENERATION_WEBHOOK_URL"
-    "DOCUMENT_PROCESSING_WEBHOOK_URL"
-    "ADDITIONAL_SOURCES_WEBHOOK_URL"
-    "NOTEBOOK_GENERATION_AUTH"
-)
-
-for env_var in "${ENV_VARS[@]}"; do
-    # Check if the environment variable already exists
-    if ! yq eval ".services.functions.environment | has(\"$env_var\")" supabase/docker/docker-compose.yml | grep -q "true"; then
-        # Add the environment variable with shell variable syntax
-        yq eval ".services.functions.environment.\"$env_var\" = \"\${$env_var}\"" -i supabase/docker/docker-compose.yml
-        echo "    Added environment variable: $env_var"
-    else
-        echo "    Environment variable $env_var already exists, skipping"
-    fi
-done
-
-# Supabase include is already enabled in docker-compose.yml
-
-# Check if InsightsLM needs rebuilding due to credential changes
-NEEDS_INSIGHTSLM_REBUILD="N"
-if [ "$WIPE_CLEAN" != "Y" ] && [ -f ".env.previous" ]; then
-    OLD_ANON_KEY=$(grep "^ANON_KEY=" .env.previous 2>/dev/null | cut -d'=' -f2)
-    OLD_API_URL=$(grep "^API_EXTERNAL_URL=" .env.previous 2>/dev/null | cut -d'=' -f2)
-    NEW_ANON_KEY=$(grep "^ANON_KEY=" .env | cut -d'=' -f2)
-    NEW_API_URL=$(grep "^API_EXTERNAL_URL=" .env | cut -d'=' -f2)
-    
-    if [ "$OLD_ANON_KEY" != "$NEW_ANON_KEY" ] || [ "$OLD_API_URL" != "$NEW_API_URL" ]; then
-        echo -e "${YELLOW}Detected changes in Supabase configuration, will rebuild InsightsLM...${NC}"
-        NEEDS_INSIGHTSLM_REBUILD="Y"
-    fi
-fi
-
-# Only rebuild InsightsLM if updating and credentials changed
-if [ "$NEEDS_INSIGHTSLM_REBUILD" = "Y" ]; then
-    echo -e "${YELLOW}Rebuilding InsightsLM with updated Supabase credentials...${NC}"
-    docker compose -p localai build insightslm
-    docker compose -p localai stop insightslm
-    docker compose -p localai up -d insightslm
-    sleep 5
-    echo -e "${GREEN}InsightsLM rebuilt with updated credentials${NC}"
-fi
 
 # Create unified credentials
 echo -e "${YELLOW}Creating unified admin credentials...${NC}"
 UNIFIED_EMAIL="admin@local.host"
 
-# Check if credentials already exist and reuse them
-if [ -f "unified_credentials.txt" ] && [ "$WIPE_CLEAN" != "Y" ]; then
-    echo "  Using existing credentials from unified_credentials.txt"
-    UNIFIED_PASSWORD=$(grep "Password:" unified_credentials.txt | awk '{print $2}')
-    if [ -z "$UNIFIED_PASSWORD" ]; then
-        echo "  Warning: Could not read password from file, generating new one"
-        UNIFIED_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
-    fi
-else
-    echo "  Generating new password"
-    UNIFIED_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
-fi
+# Generate new password for fresh install
+echo "  Generating new password"
+UNIFIED_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
 
 # Create Supabase Auth user
 # First check if user exists
@@ -832,20 +652,7 @@ WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"nomic-embed-te
 
 echo "  Updated workflow model references to use: $OLLAMA_MODEL and $EMBEDDING_MODEL"
 
-# Restart n8n to ensure webhook registration after database modifications
-echo -e "${YELLOW}Restarting n8n to refresh webhook registrations...${NC}"
-docker restart n8n
 
-# Wait for n8n to be fully ready after restart
-echo "  Waiting for n8n to restart and be ready..."
-sleep 10
-for i in {1..30}; do
-    if docker exec n8n n8n --version >/dev/null 2>&1; then
-        echo "  n8n is ready!"
-        break
-    fi
-    sleep 2
-done
 
 # Login to n8n web interface to establish session for workflow activation
 echo -e "${YELLOW}Establishing n8n web session for workflow activation...${NC}"
@@ -916,9 +723,22 @@ done
 # Clean up session cookies
 rm -f /tmp/n8n-cookies.txt
 
+# Restart n8n after workflow activation to ensure webhook registration
+echo -e "${YELLOW}Restarting n8n to apply webhook registrations...${NC}"
+docker restart n8n
+
+# Wait for n8n to be fully ready after restart
+echo "  Waiting for n8n to restart and be ready..."
+for i in {1..60}; do
+    sleep 5
+    if docker exec n8n n8n --version >/dev/null 2>&1; then
+        echo "  n8n is ready!"
+        break
+    fi
+done
+
 # Verify webhook registration is working
 echo -e "${YELLOW}Verifying webhook registration...${NC}"
-sleep 5  # Give webhooks time to register
 
 # Test the critical webhook endpoints
 echo "  Testing process-additional-sources endpoint..."
@@ -1012,26 +832,24 @@ echo "✅ Webhook verification completed"
 # sleep 5
 # python3 start_services.py --profile "$PROFILE" --environment private
 
-# Just ensure InsightsLM was built correctly for fresh installs
-if [ "$WIPE_CLEAN" = "Y" ]; then
-    echo -e "${YELLOW}Verifying InsightsLM build for fresh install...${NC}"
-    
-    # Get ANON_KEY from .env
-    ENV_ANON_KEY=$(grep "^ANON_KEY=" .env | cut -d'=' -f2)
-    
-    # Get ANON_KEY from InsightsLM container  
-    CONTAINER_ANON_KEY=$(docker exec insightslm sh -c "grep -o 'eyJhbGciOiJIUzI1NiIsInR5cCI[^\"]*' /usr/share/nginx/html/assets/index*.js 2>/dev/null | head -1" 2>/dev/null || echo "")
-    
-    if [ "$ENV_ANON_KEY" != "$CONTAINER_ANON_KEY" ] || [ -z "$ENV_ANON_KEY" ]; then
-        echo -e "${YELLOW}Rebuilding InsightsLM with correct credentials...${NC}"
-        docker compose -p localai build insightslm
-        docker compose -p localai stop insightslm
-        docker compose -p localai up -d insightslm
-        sleep 5
-        echo -e "${GREEN}InsightsLM rebuilt with correct credentials${NC}"
-    else
-        echo -e "${GREEN}✅ InsightsLM already has correct credentials${NC}"
-    fi
+# Ensure InsightsLM was built correctly
+echo -e "${YELLOW}Verifying InsightsLM build for fresh install...${NC}"
+
+# Get ANON_KEY from .env
+ENV_ANON_KEY=$(grep "^ANON_KEY=" .env | cut -d'=' -f2)
+
+# Get ANON_KEY from InsightsLM container  
+CONTAINER_ANON_KEY=$(docker exec insightslm sh -c "grep -o 'eyJhbGciOiJIUzI1NiIsInR5cCI[^\"]*' /usr/share/nginx/html/assets/index*.js 2>/dev/null | head -1" 2>/dev/null || echo "")
+
+if [ "$ENV_ANON_KEY" != "$CONTAINER_ANON_KEY" ] || [ -z "$ENV_ANON_KEY" ]; then
+    echo -e "${YELLOW}Rebuilding InsightsLM with correct credentials...${NC}"
+    docker compose -p localai build insightslm
+    docker compose -p localai stop insightslm
+    docker compose -p localai up -d insightslm
+    sleep 5
+    echo -e "${GREEN}InsightsLM rebuilt with correct credentials${NC}"
+else
+    echo -e "${GREEN}✅ InsightsLM already has correct credentials${NC}"
 fi
 
 # Save credentials
