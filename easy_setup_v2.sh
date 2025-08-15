@@ -389,50 +389,77 @@ fi
 # Copy .env to supabase/docker
 cp .env supabase/docker/.env
 
-# Fix storage extended attributes issue on macOS
+# Fix storage extended attributes issue on macOS by using S3/MinIO backend
 if [ "$IS_MACOS" = true ]; then
-    echo -e "${YELLOW}Configuring storage for macOS compatibility...${NC}"
+    echo -e "${YELLOW}Configuring S3/MinIO storage backend for macOS compatibility...${NC}"
     
-    # Check if storage service exists in supabase docker-compose
-    if yq eval '.services | has("storage")' supabase/docker/docker-compose.yml | grep -q "true"; then
-        echo "  Disabling extended attributes for macOS filesystem compatibility..."
-        
-        # Add environment variables to disable xattrs and fix path handling
-        if ! yq eval '.services.storage.environment | has("STORAGE_S3_FORCE_PATH_STYLE")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.STORAGE_S3_FORCE_PATH_STYLE = "true"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        if ! yq eval '.services.storage.environment | has("MINIO_STORAGE_USE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.MINIO_STORAGE_USE_XATTR = "false"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        # Also disable SSL for local storage
-        if ! yq eval '.services.storage.environment | has("STORAGE_S3_DISABLE_SSL")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.STORAGE_S3_DISABLE_SSL = "true"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        # Add TUS_URL_PATH for resumable uploads on macOS
-        if ! yq eval '.services.storage.environment | has("TUS_URL_PATH")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.TUS_URL_PATH = "/storage/v1/upload/resumable"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        # Add additional xattr disable flags for macOS
-        if ! yq eval '.services.storage.environment | has("STORAGE_FILE_SYSTEM_DISABLE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.STORAGE_FILE_SYSTEM_DISABLE_XATTR = "true"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        if ! yq eval '.services.storage.environment | has("FILE_STORAGE_BACKEND_DISABLE_XATTR")' supabase/docker/docker-compose.yml | grep -q "true"; then
-            yq eval '.services.storage.environment.FILE_STORAGE_BACKEND_DISABLE_XATTR = "true"' -i supabase/docker/docker-compose.yml
-        fi
-        
-        # Remove :z volume mount suffix that causes extended attribute issues on macOS
-        if yq eval '.services.storage.volumes[]' supabase/docker/docker-compose.yml | grep -q ":z"; then
-            echo "  Removing SELinux volume mount options and using delegated mount for macOS..."
-            yq eval '.services.storage.volumes = ["./volumes/storage:/var/lib/storage:delegated"]' -i supabase/docker/docker-compose.yml
-        fi
-        
-        echo "  ✅ Storage configured for macOS compatibility"
+    # Add MinIO service for macOS to avoid file system extended attributes issues
+    echo "  Adding MinIO S3-compatible storage service..."
+    
+    # Add MinIO service if it doesn't exist
+    if ! yq eval '.services | has("minio")' supabase/docker/docker-compose.yml | grep -q "true"; then
+        yq eval '.services.minio = {
+            "image": "minio/minio",
+            "container_name": "supabase-minio",
+            "ports": ["9000:9000", "9001:9001"],
+            "environment": {
+                "MINIO_ROOT_USER": "supa-storage",
+                "MINIO_ROOT_PASSWORD": "secret1234"
+            },
+            "command": "server --console-address \":9001\" /data",
+            "healthcheck": {
+                "test": ["CMD", "curl", "-f", "http://minio:9000/minio/health/live"],
+                "interval": "2s",
+                "timeout": "10s",
+                "retries": 5
+            },
+            "volumes": ["./volumes/minio:/data:delegated"],
+            "restart": "unless-stopped"
+        }' -i supabase/docker/docker-compose.yml
+        echo "    ✅ Added MinIO service"
     fi
+    
+    # Add MinIO bucket creation service
+    if ! yq eval '.services | has("minio-createbucket")' supabase/docker/docker-compose.yml | grep -q "true"; then
+        yq eval '.services."minio-createbucket" = {
+            "image": "minio/mc",
+            "depends_on": {
+                "minio": {
+                    "condition": "service_healthy"
+                }
+            },
+            "entrypoint": "/bin/sh -c \"" +
+                "/usr/bin/mc alias set supa-minio http://minio:9000 supa-storage secret1234; " +
+                "/usr/bin/mc mb supa-minio/stub --ignore-existing; " +
+                "exit 0;\""
+        }' -i supabase/docker/docker-compose.yml
+        echo "    ✅ Added MinIO bucket creation service"
+    fi
+    
+    # Configure storage service to use S3 backend
+    echo "  Configuring storage service to use S3/MinIO backend..."
+    
+    if yq eval '.services | has("storage")' supabase/docker/docker-compose.yml | grep -q "true"; then
+        # Switch to S3 backend
+        yq eval '.services.storage.environment.STORAGE_BACKEND = "s3"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.GLOBAL_S3_BUCKET = "stub"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.GLOBAL_S3_ENDPOINT = "http://minio:9000"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.GLOBAL_S3_PROTOCOL = "http"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.GLOBAL_S3_FORCE_PATH_STYLE = "true"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.AWS_ACCESS_KEY_ID = "supa-storage"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.AWS_SECRET_ACCESS_KEY = "secret1234"' -i supabase/docker/docker-compose.yml
+        yq eval '.services.storage.environment.AWS_DEFAULT_REGION = "stub"' -i supabase/docker/docker-compose.yml
+        
+        # Add MinIO as a dependency for storage
+        yq eval '.services.storage.depends_on.minio = {"condition": "service_healthy"}' -i supabase/docker/docker-compose.yml
+        
+        # Remove problematic volume mount suffixes
+        yq eval '.services.storage.volumes = ["./volumes/storage:/var/lib/storage:delegated"]' -i supabase/docker/docker-compose.yml
+        
+        echo "    ✅ Storage service configured for S3/MinIO backend"
+    fi
+    
+    echo "  ✅ S3/MinIO storage backend configured for macOS compatibility"
 fi
 
 # Configure Supabase Edge Functions environment variables BEFORE starting services
@@ -1101,9 +1128,10 @@ echo "   📝 If you experience 500 errors, workflows may need manual activation
 if [ "$IS_MACOS" = true ]; then
     echo ""
     echo "🍎 macOS Compatibility:"
-    echo "   ✅ Storage service configured to disable extended attributes (xattrs)"
-    echo "   ✅ File system compatibility mode enabled for macOS"
-    echo "   ✅ Resumable upload support configured for PDF/file uploads"
+    echo "   ✅ S3/MinIO storage backend configured (avoids file system xattr issues)"
+    echo "   ✅ MinIO service running on port 9000 (console on port 9001)"
+    echo "   ✅ File uploads will use S3-compatible storage instead of local filesystem"
+    echo "   💡 MinIO Console: http://localhost:9001 (user: supa-storage, pass: secret1234)"
 fi
 echo ""
 echo -e "${GREEN}============================================================${NC}"
