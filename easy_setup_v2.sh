@@ -21,7 +21,7 @@ INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
 INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/sirouk/insights-lm-local-package"
 
 # Default Ollama model configuration
-DEFAULT_OLLAMA_MODEL="deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
+DEFAULT_OLLAMA_MODEL="deepseek-ai:DeepSeek-R1-0528-Qwen3-8B"
 DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
 
 echo -e "${GREEN}=== InsightsLM Local AI Setup Script ===${NC}"
@@ -528,28 +528,44 @@ SUPABASE_ID=$(openssl rand -hex 8 | cut -c1-16)
 OLLAMA_ID=$(openssl rand -hex 8 | cut -c1-16)
 N8N_API_ID=$(openssl rand -hex 8 | cut -c1-16)
 
-cat > /tmp/n8n_credentials.json << EOF
+# Ensure all required variables are available
+if [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$NOTEBOOK_GENERATION_AUTH" ]; then
+    echo -e "${YELLOW}  Re-sourcing .env to ensure all variables are available...${NC}"
+    source .env
+fi
+
+# Verify critical variables
+if [ -z "$SERVICE_ROLE_KEY" ]; then
+    echo -e "${RED}ERROR: SERVICE_ROLE_KEY not available${NC}"
+    exit 1
+fi
+
+echo "  Using SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:0:30}..." # Show first 30 chars
+echo "  Using NOTEBOOK_GENERATION_AUTH: ${NOTEBOOK_GENERATION_AUTH:0:16}..." # Show first 16 chars
+
+# Create credentials JSON template and substitute variables
+cat > /tmp/n8n_credentials_template.json << 'EOF'
 [
   {
-    "id": "${HEADER_AUTH_ID}",
+    "id": "HEADER_AUTH_ID_PLACEHOLDER",
     "name": "Header Auth account",
     "type": "httpHeaderAuth",
     "data": {
       "name": "Authorization",
-      "value": "${NOTEBOOK_GENERATION_AUTH}"
+      "value": "NOTEBOOK_GENERATION_AUTH_PLACEHOLDER"
     }
   },
   {
-    "id": "${SUPABASE_ID}",
+    "id": "SUPABASE_ID_PLACEHOLDER",
     "name": "Supabase account",
     "type": "supabaseApi",
     "data": {
       "host": "http://kong:8000",
-      "serviceRoleKey": "${SERVICE_ROLE_KEY}"
+      "serviceRoleKey": "SERVICE_ROLE_KEY_PLACEHOLDER"
     }
   },
   {
-    "id": "${OLLAMA_ID}",
+    "id": "OLLAMA_ID_PLACEHOLDER",
     "name": "Ollama account",
     "type": "ollamaApi",
     "data": {
@@ -557,19 +573,41 @@ cat > /tmp/n8n_credentials.json << EOF
     }
   },
   {
-    "id": "${N8N_API_ID}",
+    "id": "N8N_API_ID_PLACEHOLDER",
     "name": "n8n account",
     "type": "n8nApi",
     "data": {
-      "apiKey": "${N8N_API_KEY}",
+      "apiKey": "N8N_API_KEY_PLACEHOLDER",
       "baseUrl": "http://n8n:5678/api/v1"
     }
   }
 ]
 EOF
 
+# Use sed to replace placeholders with actual values 
+# Use different delimiter for SERVICE_ROLE_KEY to handle forward slashes in JWT
+sed -e "s/HEADER_AUTH_ID_PLACEHOLDER/${HEADER_AUTH_ID}/g" \
+    -e "s/NOTEBOOK_GENERATION_AUTH_PLACEHOLDER/${NOTEBOOK_GENERATION_AUTH}/g" \
+    -e "s/SUPABASE_ID_PLACEHOLDER/${SUPABASE_ID}/g" \
+    -e "s|SERVICE_ROLE_KEY_PLACEHOLDER|${SERVICE_ROLE_KEY}|g" \
+    -e "s/OLLAMA_ID_PLACEHOLDER/${OLLAMA_ID}/g" \
+    -e "s/N8N_API_KEY_PLACEHOLDER/${N8N_API_KEY}/g" \
+    /tmp/n8n_credentials_template.json > /tmp/n8n_credentials.json
+
 docker cp /tmp/n8n_credentials.json n8n:/tmp/creds.json
-docker exec n8n n8n import:credentials --input=/tmp/creds.json >/dev/null 2>&1 || true
+
+# Debug: Show credential JSON to verify variable expansion
+echo "  Verifying credential JSON structure..."
+head -20 /tmp/n8n_credentials.json | grep -E "(serviceRoleKey|host)" || echo "    No serviceRoleKey found in credential JSON"
+
+# Import credentials
+IMPORT_RESULT=$(docker exec n8n n8n import:credentials --input=/tmp/creds.json 2>&1)
+if echo "$IMPORT_RESULT" | grep -q "error\|Error"; then
+    echo -e "${YELLOW}  Warning: Credential import may have failed:${NC}"
+    echo "    $IMPORT_RESULT"
+else
+    echo "  ✅ Credentials imported successfully"
+fi
 
 # Update and import workflow
 echo -e "${YELLOW}Importing InsightsLM workflows...${NC}"
