@@ -536,7 +536,7 @@ cat > /tmp/n8n_credentials.json << EOF
     "type": "httpHeaderAuth",
     "data": {
       "name": "Authorization",
-      "value": "Bearer ${NOTEBOOK_GENERATION_AUTH}"
+      "value": "${NOTEBOOK_GENERATION_AUTH}"
     }
   },
   {
