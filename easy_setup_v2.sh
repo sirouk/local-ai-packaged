@@ -213,6 +213,30 @@ while IFS= read -r service_name; do
         if ! yq eval ".services | has(\"$service_name\")" docker-compose.yml | grep -q "true"; then
             yq eval ".services.$service_name = load(\"insights-lm-local-package/docker-compose.copy.yml\").services.$service_name" -i docker-compose.yml
             echo "    Added service: $service_name"
+            
+            # Apply Apple Silicon compatibility fixes
+            if [ "$IS_MACOS" = true ] && [[ $(uname -m) == "arm64" ]]; then
+                case "$service_name" in
+                    "whisper-asr")
+                        echo "      → Configuring whisper-asr for Apple Silicon..."
+                        # Use CPU variant instead of GPU variant
+                        yq eval ".services.whisper-asr.image = \"onerahmet/openai-whisper-asr-webservice:latest\"" -i docker-compose.yml
+                        # Remove GPU device requirements
+                        yq eval "del(.services.whisper-asr.deploy.resources.reservations.devices)" -i docker-compose.yml
+                        # Remove GPU profile restriction to allow CPU profile
+                        yq eval "del(.services.whisper-asr.profiles)" -i docker-compose.yml
+                        echo "      → whisper-asr configured for CPU execution"
+                        ;;
+                    "coqui-tts")
+                        echo "      → Configuring coqui-tts for Apple Silicon..."
+                        # Disable CUDA
+                        yq eval ".services.coqui-tts.command = [\"--model_name\", \"tts_models/en/vctk/vits\", \"--use_cuda\", \"false\"]" -i docker-compose.yml
+                        # Remove GPU device requirements  
+                        yq eval "del(.services.coqui-tts.deploy.resources.reservations.devices)" -i docker-compose.yml
+                        echo "      → coqui-tts configured for CPU execution"
+                        ;;
+                esac
+            fi
         else
             echo "    Service $service_name already exists, skipping"
         fi
@@ -386,7 +410,18 @@ echo "✅ Supabase Edge Functions configured with webhook environment variables"
 # Auto-detect compute profile
 echo -e "${YELLOW}Detecting compute profile...${NC}"
 PROFILE="cpu"
-if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+if [ "$IS_MACOS" = true ]; then
+    # Check for Apple Silicon (M1/M2/M3/M4)
+    if [[ $(uname -m) == "arm64" ]]; then
+        PROFILE="cpu"  # Apple Silicon uses CPU for now
+        echo -e "${YELLOW}Apple Silicon detected - using CPU profile${NC}"
+    else
+        # Intel Mac - check for AMD GPU
+        if system_profiler SPDisplaysDataType | grep -q "AMD\|Radeon"; then
+            PROFILE="gpu-amd"
+        fi
+    fi
+elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
     PROFILE="gpu-nvidia"
 elif command -v rocminfo >/dev/null 2>&1 || [ -d /opt/rocm ]; then
     PROFILE="gpu-amd"
