@@ -284,7 +284,7 @@ fi
 # Update x-init-ollama to use selected models
 echo -e "${YELLOW}Configuring Ollama to pull selected models...${NC}"
 # Update the command in x-init-ollama anchor
-OLLAMA_COMMAND="sleep 3; OLLAMA_HOST=ollama:11434 ollama pull $OLLAMA_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $EMBEDDING_MODEL"
+OLLAMA_COMMAND="echo 'Waiting for Ollama proxy to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama proxy ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $OLLAMA_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $EMBEDDING_MODEL"
 yq eval "."x-init-ollama".command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
 echo "  Updated x-init-ollama to pull: $OLLAMA_MODEL and $EMBEDDING_MODEL"
 
@@ -491,27 +491,57 @@ set -e
 PID_FILE="/tmp/ollama-host.pid"
 LOG_FILE="/tmp/ollama-host.log"
 
-# If already running, exit early
+echo "Starting Ollama host management..." | tee -a "$LOG_FILE"
+
+# Function to check if Ollama is bound to 0.0.0.0:11434
+check_ollama_binding() {
+  # Check if port 11434 is bound to 0.0.0.0 (accessible from Docker)
+  if netstat -an 2>/dev/null | grep -q "*.11434.*LISTEN" || netstat -an 2>/dev/null | grep -q "0.0.0.0.11434.*LISTEN"; then
+    return 0  # Correctly bound
+  else
+    return 1  # Not correctly bound
+  fi
+}
+
+# Stop any existing Ollama processes that aren't properly bound
 if pgrep -f "ollama serve" >/dev/null 2>&1; then
-  echo "Ollama already running on host" | tee -a "$LOG_FILE"
-  exit 0
+  echo "Found existing Ollama process(es)..." | tee -a "$LOG_FILE"
+  
+  # Check if current binding is correct
+  if check_ollama_binding; then
+    echo "Ollama already running with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
+    # Get the PID of the correctly running process
+    EXISTING_PID=$(pgrep -f "ollama serve" | head -1)
+    echo $EXISTING_PID > "$PID_FILE"
+    exit 0
+  else
+    echo "Ollama running with incorrect binding (likely 127.0.0.1 only), stopping..." | tee -a "$LOG_FILE"
+    # Kill existing Ollama processes
+    pkill -f "ollama serve" 2>/dev/null || true
+    sleep 3
+    # Force kill if still running
+    pkill -9 -f "ollama serve" 2>/dev/null || true
+    sleep 2
+  fi
 fi
+
+echo "Starting Ollama with Docker-accessible binding (0.0.0.0:11434)..." | tee -a "$LOG_FILE"
 
 # Start Ollama with proper host binding for Docker access
 nohup env OLLAMA_HOST=0.0.0.0:11434 ollama serve > "$LOG_FILE" 2>&1 &
 HOST_PID=$!
 echo $HOST_PID > "$PID_FILE"
 
-# Wait until port is open (max ~60s)
+# Wait until port is open and correctly bound (max ~60s)
 for i in {1..60}; do
-  if nc -z localhost 11434 2>/dev/null; then
-    echo "Ollama started on host (PID=$HOST_PID)" | tee -a "$LOG_FILE"
+  if nc -z localhost 11434 2>/dev/null && check_ollama_binding; then
+    echo "Ollama started successfully on host (PID=$HOST_PID) with Docker-accessible binding" | tee -a "$LOG_FILE"
     exit 0
   fi
   sleep 1
 done
 
-echo "ERROR: Ollama did not become ready on port 11434" | tee -a "$LOG_FILE"
+echo "ERROR: Ollama did not start with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
 exit 1
 START_HOST_OLLAMA
 
@@ -585,13 +615,57 @@ WATCH_OLLAMA
         fi
     done
 
-    # Define/overwrite the proxy service (pure socat; no host control inside container)
-    yq eval '.services.ollama.image = "alpine/socat"' -i "$DC_FILE"
+    # Create nginx configuration for Ollama proxy with Host header rewriting
+    echo "  Creating nginx configuration for Ollama proxy..."
+    mkdir -p ollama-proxy/nginx
+    
+    cat > ollama-proxy/nginx/nginx.conf << 'NGINX_CONF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream ollama_backend {
+        server host.docker.internal:11434;
+    }
+    
+    server {
+        listen 11434;
+        
+        location / {
+            proxy_pass http://ollama_backend;
+            proxy_set_header Host localhost:11434;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Handle streaming responses
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            
+            # Increase timeouts for long-running requests
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+        }
+    }
+}
+NGINX_CONF
+
+    # Define/overwrite the proxy service with nginx
+    yq eval '.services.ollama.image = "nginx:alpine"' -i "$DC_FILE"
     yq eval '.services.ollama.container_name = "ollama"' -i "$DC_FILE"
-    # alpine/socat image has socat as ENTRYPOINT, so command should not include "socat"
-    yq eval '.services.ollama.command = "TCP-LISTEN:11434,fork,reuseaddr TCP:host.docker.internal:11434"' -i "$DC_FILE"
     yq eval '.services.ollama.restart = "unless-stopped"' -i "$DC_FILE"
     yq eval '.services.ollama.expose = ["11434/tcp"]' -i "$DC_FILE"
+    yq eval '.services.ollama.volumes = ["./ollama-proxy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"]' -i "$DC_FILE"
+    # Add health check to verify proxy is working
+    yq eval '.services.ollama.healthcheck.test = ["CMD", "nginx", "-t"]' -i "$DC_FILE"
+    yq eval '.services.ollama.healthcheck.interval = "10s"' -i "$DC_FILE"
+    yq eval '.services.ollama.healthcheck.timeout = "5s"' -i "$DC_FILE"
+    yq eval '.services.ollama.healthcheck.retries = 5' -i "$DC_FILE"
+    yq eval '.services.ollama.healthcheck.start_period = "10s"' -i "$DC_FILE"
     # Ensure the service starts under cpu profile so it is included when profile filtering is used
     yq eval '.services.ollama.profiles = ["cpu"]' -i "$DC_FILE"
 
