@@ -914,20 +914,19 @@ fi
 # Compute profile already detected at the beginning of the script
 
 # Update Dockerfile to use correct repository URL BEFORE building
-echo -e "${YELLOW}Updating InsightsLM Dockerfile...${NC}"
+echo -e "${YELLOW}Updating InsightsLM Dockerfile repository URL...${NC}"
 if [ -f "insights-lm-local-package/Dockerfile" ]; then
     # Replace the hardcoded GitHub URL in the git clone command
     cp_sed "s|https://github.com/theaiautomators/insights-lm-public.git|${INSIGHTS_LM_PUBLIC_URL}|g" insights-lm-local-package/Dockerfile
-    
-    # Add CACHE_BUST ARG after the FROM line to accept the cache-busting argument
-    # This allows Docker to accept the arg even though we don't use it (it just forces rebuild)
-    cp_sed '/^FROM node:22 as build$/a\
-ARG CACHE_BUST' insights-lm-local-package/Dockerfile
-    
-    echo "  Updated Dockerfile: repository URL and cache-bust support"
+    echo "  Updated Dockerfile to use repository: ${INSIGHTS_LM_PUBLIC_URL}"
 fi
 
-
+# Build InsightsLM separately first to ensure fresh build with credentials
+echo -e "${YELLOW}Pre-building InsightsLM with fresh credentials...${NC}"
+echo "  This ensures the ANON_KEY is properly embedded in the build"
+docker compose -p localai build --no-cache insightslm || {
+    echo -e "${YELLOW}  Note: InsightsLM will be built when services start${NC}"
+}
 
 # Start all services first (including storage for bucket creation)
 echo -e "${YELLOW}Starting all services...${NC}"
@@ -1457,7 +1456,7 @@ echo "✅ Webhook verification completed"
 # Verify InsightsLM is running
 echo -e "${YELLOW}Verifying InsightsLM container...${NC}"
 if docker ps | grep -q insightslm; then
-    echo -e "${GREEN}✅ InsightsLM is running (cache-bust ensured fresh build with credentials)${NC}"
+    echo -e "${GREEN}✅ InsightsLM is running (built with fresh credentials)${NC}"
 else
     echo -e "${YELLOW}⚠️  InsightsLM container not found - may need manual restart${NC}"
 fi
