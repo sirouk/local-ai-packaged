@@ -383,6 +383,17 @@ while IFS= read -r service_name; do
             yq eval ".services.$service_name = load(\"insights-lm-local-package/docker-compose.copy.yml\").services.$service_name" -i docker-compose.yml
             echo "    Added service: $service_name"
             
+            # Force fresh build for insightslm to ensure credentials are embedded correctly
+            if [ "$service_name" = "insightslm" ]; then
+                echo "      → Configuring insightslm to build fresh (no Docker cache)..."
+                # Add a unique build arg that changes every run to force Docker to rebuild
+                # This ensures ANON_KEY from .env gets properly embedded in the build
+                CACHE_BUST_TIMESTAMP=$(date +%s)
+                yq eval ".services.insightslm.build.args.CACHE_BUST = \"${CACHE_BUST_TIMESTAMP}\"" -i docker-compose.yml
+                # Also add cache_from: [] to prevent using cached layers
+                yq eval '.services.insightslm.build.cache_from = []' -i docker-compose.yml
+                echo "      → InsightsLM configured for fresh build with current credentials"
+            fi
 
             # Apply Apple Silicon compatibility fixes
             if [ "$IS_MACOS" = true ] && [[ $(uname -m) == "arm64" ]]; then
@@ -903,19 +914,20 @@ fi
 # Compute profile already detected at the beginning of the script
 
 # Update Dockerfile to use correct repository URL BEFORE building
-echo -e "${YELLOW}Updating InsightsLM Dockerfile repository URL...${NC}"
+echo -e "${YELLOW}Updating InsightsLM Dockerfile...${NC}"
 if [ -f "insights-lm-local-package/Dockerfile" ]; then
     # Replace the hardcoded GitHub URL in the git clone command
     cp_sed "s|https://github.com/theaiautomators/insights-lm-public.git|${INSIGHTS_LM_PUBLIC_URL}|g" insights-lm-local-package/Dockerfile
-    echo "  Updated Dockerfile to use repository: ${INSIGHTS_LM_PUBLIC_URL}"
+    
+    # Add CACHE_BUST ARG after the FROM line to accept the cache-busting argument
+    # This allows Docker to accept the arg even though we don't use it (it just forces rebuild)
+    cp_sed '/^FROM node:22 as build$/a\
+ARG CACHE_BUST' insights-lm-local-package/Dockerfile
+    
+    echo "  Updated Dockerfile: repository URL and cache-bust support"
 fi
 
-# Build InsightsLM separately first to ensure fresh build with credentials
-echo -e "${YELLOW}Pre-building InsightsLM with fresh credentials...${NC}"
-echo "  This ensures the ANON_KEY is properly embedded in the build"
-docker compose -p localai build --no-cache insightslm || {
-    echo -e "${YELLOW}  Note: InsightsLM will be built when services start${NC}"
-}
+
 
 # Start all services first (including storage for bucket creation)
 echo -e "${YELLOW}Starting all services...${NC}"
@@ -1445,7 +1457,7 @@ echo "✅ Webhook verification completed"
 # Verify InsightsLM is running
 echo -e "${YELLOW}Verifying InsightsLM container...${NC}"
 if docker ps | grep -q insightslm; then
-    echo -e "${GREEN}✅ InsightsLM is running (built with fresh credentials)${NC}"
+    echo -e "${GREEN}✅ InsightsLM is running (cache-bust ensured fresh build with credentials)${NC}"
 else
     echo -e "${YELLOW}⚠️  InsightsLM container not found - may need manual restart${NC}"
 fi
