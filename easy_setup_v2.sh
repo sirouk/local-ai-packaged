@@ -383,6 +383,7 @@ while IFS= read -r service_name; do
             yq eval ".services.$service_name = load(\"insights-lm-local-package/docker-compose.copy.yml\").services.$service_name" -i docker-compose.yml
             echo "    Added service: $service_name"
             
+
             # Apply Apple Silicon compatibility fixes
             if [ "$IS_MACOS" = true ] && [[ $(uname -m) == "arm64" ]]; then
                 case "$service_name" in
@@ -909,6 +910,13 @@ if [ -f "insights-lm-local-package/Dockerfile" ]; then
     echo "  Updated Dockerfile to use repository: ${INSIGHTS_LM_PUBLIC_URL}"
 fi
 
+# Build InsightsLM separately first to ensure fresh build with credentials
+echo -e "${YELLOW}Pre-building InsightsLM with fresh credentials...${NC}"
+echo "  This ensures the ANON_KEY is properly embedded in the build"
+docker compose -p localai build --no-cache insightslm || {
+    echo -e "${YELLOW}  Note: InsightsLM will be built when services start${NC}"
+}
+
 # Start all services first (including storage for bucket creation)
 echo -e "${YELLOW}Starting all services...${NC}"
 python3 start_services.py --profile "$PROFILE" --environment private
@@ -1434,9 +1442,13 @@ fi
 echo "✅ Webhook verification completed"
 
 
-# Since this is a fresh install and credentials were set before building,
-# InsightsLM should already have the correct credentials.
-# No rebuild necessary.
+# Verify InsightsLM is running
+echo -e "${YELLOW}Verifying InsightsLM container...${NC}"
+if docker ps | grep -q insightslm; then
+    echo -e "${GREEN}✅ InsightsLM is running (built with fresh credentials)${NC}"
+else
+    echo -e "${YELLOW}⚠️  InsightsLM container not found - may need manual restart${NC}"
+fi
 
 # Save credentials
 cat > unified_credentials.txt << EOF
