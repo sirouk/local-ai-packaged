@@ -413,6 +413,55 @@ while IFS= read -r service_name; do
     fi
 done < <(yq eval '.services | keys | .[]' insights-lm-local-package/docker-compose.copy.yml)
 
+# Fix CuDNN nvrtc issue for coqui-tts on Linux systems with NVIDIA GPUs
+if [ "$IS_MACOS" = false ] && [ "$PROFILE" = "gpu-nvidia" ]; then
+    echo -e "${YELLOW}Applying CuDNN nvrtc fix for coqui-tts...${NC}"
+    
+    # Check if coqui-tts service exists in docker-compose.yml
+    if yq eval '.services | has("coqui-tts")' docker-compose.yml | grep -q "true"; then
+        # Create directory for custom Dockerfile
+        mkdir -p coqui-tts-fixed
+        
+        # Create custom Dockerfile with nvrtc fix
+        cat > coqui-tts-fixed/Dockerfile << 'COQUI_DOCKERFILE'
+FROM ghcr.io/coqui-ai/tts
+
+# Fix the nvrtc library issue by updating library cache and environment
+USER root
+
+# Add PyTorch library path to ld.so.conf and update library cache
+RUN echo "/usr/local/lib/python3.10/dist-packages/torch/lib" > /etc/ld.so.conf.d/torch.conf && \
+    ldconfig
+
+# Set environment variables to help PyTorch find CUDA libraries
+ENV CUDA_CACHE_DISABLE=1
+ENV TORCH_CUDA_ARCH_LIST="6.0;6.1;7.0;7.5;8.0;8.6;8.7;9.0"
+ENV PYTORCH_NVVM_FORCE_COMPATIBLE=1
+
+# Create symlinks for common nvrtc library names
+RUN ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libnvrtc.so.11.2 /usr/local/lib/libnvrtc.so && \
+    ln -sf /usr/local/lib/python3.10/dist-packages/torch/lib/libnvrtc-builtins.so.11.8 /usr/local/lib/libnvrtc-builtins.so
+
+ENTRYPOINT ["python3", "TTS/server/server.py"]
+COQUI_DOCKERFILE
+        
+        # Update docker-compose.yml to use custom build
+        echo "  → Updating coqui-tts service to use custom build for nvrtc fix"
+        yq eval '.services.coqui-tts.build.context = "./coqui-tts-fixed"' -i docker-compose.yml
+        yq eval '.services.coqui-tts.build.dockerfile = "Dockerfile"' -i docker-compose.yml
+        yq eval 'del(.services.coqui-tts.image)' -i docker-compose.yml
+        
+        # Ensure proper NVIDIA runtime configuration
+        yq eval '.services.coqui-tts.runtime = "nvidia"' -i docker-compose.yml
+        yq eval '.services.coqui-tts.environment += ["NVIDIA_VISIBLE_DEVICES=all"]' -i docker-compose.yml
+        yq eval '.services.coqui-tts.environment += ["NVIDIA_DRIVER_CAPABILITIES=compute,utility"]' -i docker-compose.yml
+        
+        echo "  ✅ CuDNN nvrtc fix applied - this will eliminate CUDA warnings"
+    else
+        echo "  → coqui-tts service not found, skipping nvrtc fix"
+    fi
+fi
+
 # Configure n8n for external access
 echo -e "${YELLOW}Configuring n8n external access and environment...${NC}"
 
