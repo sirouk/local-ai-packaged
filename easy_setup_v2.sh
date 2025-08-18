@@ -417,9 +417,7 @@ while IFS= read -r service_name; do
                         # Add platform emulation for ARM64 compatibility
                         yq eval ".services.coqui-tts.platform = \"linux/amd64\"" -i docker-compose.yml
                         # Add environment variables to suppress NNPACK warnings on Apple Silicon
-                        yq eval '.services.coqui-tts.environment += ["NNPACK_DISABLE=1"]' -i docker-compose.yml
-                        yq eval '.services.coqui-tts.environment += ["OMP_NUM_THREADS=1"]' -i docker-compose.yml
-                        yq eval '.services.coqui-tts.environment += ["MKL_NUM_THREADS=1"]' -i docker-compose.yml
+                        yq eval '.services.coqui-tts.environment += ["USE_NNPACK=0"]' -i docker-compose.yml
                         echo "      → coqui-tts configured for CPU execution with x86_64 emulation and NNPACK disabled"
                         ;;
                 esac
