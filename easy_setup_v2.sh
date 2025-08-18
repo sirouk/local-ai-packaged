@@ -573,7 +573,9 @@ cp_sed "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
 cp_sed "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
 
 # Configure access URLs (ACCESS_HOST already set at beginning)
-cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${ACCESS_HOST}:8000|" .env
+cp_sed "s|^SITE_URL=.*|SITE_URL=http://${ACCESS_HOST}:3000|" .env # for GoTrue
+cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${ACCESS_HOST}:8000|" .env # for Supabase
+cp_sed "s|^SUPABASE_PUBLIC_URL=.*|SUPABASE_PUBLIC_URL=http://${ACCESS_HOST}:8000|" .env # for Supabase
 
 # Source the .env file
 source .env
