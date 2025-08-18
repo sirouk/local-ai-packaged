@@ -1231,6 +1231,24 @@ else
     echo "    This may be normal if workflows use different model configurations"
 fi
 
+# Update SUPABASE_PUBLIC_URL placeholder in workflows
+echo -e "${YELLOW}Updating Supabase public URL in workflows...${NC}"
+SUPABASE_PUBLIC_URL="http://${ACCESS_HOST}:8000"
+echo "  Replacing SUPABASE_PUBLIC_URL_PLACEHOLDER with $SUPABASE_PUBLIC_URL"
+
+# Update the placeholder in all InsightsLM workflows
+URL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+UPDATE workflow_entity 
+SET nodes = REPLACE(nodes::text, 'SUPABASE_PUBLIC_URL_PLACEHOLDER', '$SUPABASE_PUBLIC_URL')::jsonb
+WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%SUPABASE_PUBLIC_URL_PLACEHOLDER%'
+RETURNING id;" 2>/dev/null | wc -l)
+
+if [ "$URL_UPDATES" -gt 0 ]; then
+    echo -e "${GREEN}✅ Updated Supabase public URL in $URL_UPDATES workflow(s)${NC}"
+else
+    echo "  No workflows needed URL updates (this is normal if placeholder wasn't found)"
+fi
+
 
 
 # Login to n8n web interface to establish session for workflow activation
