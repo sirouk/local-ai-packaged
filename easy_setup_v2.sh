@@ -297,30 +297,34 @@ N8N_ENCRYPTION_KEY=$(openssl rand -hex 16)
 N8N_USER_MANAGEMENT_JWT_SECRET=$(openssl rand -hex 16)
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 JWT_SECRET=$(openssl rand -hex 16)
+DASHBOARD_USERNAME="admin@local.host"
 DASHBOARD_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
 CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 16)
 LANGFUSE_SALT=$(openssl rand -hex 16)
 NEXTAUTH_SECRET=$(openssl rand -hex 16)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
-DASHBOARD_USERNAME="admin@local.host"
 NEO4J_AUTH="neo4j/$(openssl rand -base64 12 | tr -d '=+/' | cut -c1-16)"
 NOTEBOOK_GENERATION_AUTH=$(openssl rand -hex 16)
+FLOWISE_USERNAME=$DASHBOARD_USERNAME
+FLOWISE_PASSWORD=$DASHBOARD_PASSWORD
 
 # Update .env file with secrets
 cp_sed "s/N8N_ENCRYPTION_KEY=.*/N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY/" .env
 cp_sed "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_USER_MANAGEMENT_JWT_SECRET/" .env
 cp_sed "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
 cp_sed "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
+cp_sed "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
 cp_sed "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
-cp_sed "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
 cp_sed "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
 cp_sed "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
 cp_sed "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
 cp_sed "s/NEXTAUTH_SECRET=.*/NEXTAUTH_SECRET=$NEXTAUTH_SECRET/" .env
 cp_sed "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-cp_sed "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$DASHBOARD_USERNAME/" .env
 cp_sed "s|NEO4J_AUTH=.*|NEO4J_AUTH=\"$NEO4J_AUTH\"|" .env
+cp_sed "s/FLOWISE_USERNAME=.*/FLOWISE_USERNAME=$FLOWISE_USERNAME/" .env
+cp_sed "s/FLOWISE_PASSWORD=.*/FLOWISE_PASSWORD=$FLOWISE_PASSWORD/" .env
+cp_sed "s/POOLER_TENANT_ID=.*/POOLER_TENANT_ID=1000/" .env
 
 # Concatenate InsightsLM environment variables from .env.copy
 echo "" >> .env
@@ -376,9 +380,9 @@ if [ ! -d "supabase/docker" ]; then
     # Original repository:
     # git clone --filter=blob:none --no-checkout https://github.com/supabase/supabase.git
     # Using forked repository (optional - only if you've forked Supabase):
-    git clone --filter=blob:none --no-checkout https://github.com/supabase/supabase.git
+    # git clone --filter=blob:none --no-checkout https://github.com/supabase/supabase.git
     # Uncomment the line below if you've forked Supabase:
-    # git clone --filter=blob:none --no-checkout https://github.com/sirouk/supabase.git
+    git clone --filter=blob:none --no-checkout https://github.com/sirouk/supabase.git
     cd supabase
     git sparse-checkout init --cone
     git sparse-checkout set docker
@@ -1257,19 +1261,6 @@ Service Access URLs:
 - Supabase: http://${ACCESS_HOST}:8000
 - n8n: http://${ACCESS_HOST}:5678
 - InsightsLM: http://${ACCESS_HOST}:3010
-
-N8N Configuration Required:
-============================
-Please update the Supabase credentials in n8n:
-
-SERVICE_ROLE_KEY for Supabase:
-${SERVICE_ROLE_KEY}
-
-Steps:
-1. Go to: http://${ACCESS_HOST}:5678/credentials
-2. Find 'Supabase account' credential  
-3. Click Edit → Update 'Service Role Key' field
-4. Paste the SERVICE_ROLE_KEY above and Save
 EOF
 
 # Save current .env for future comparison
@@ -1291,19 +1282,6 @@ echo ""
 echo "🔐 Login Credentials saved to: unified_credentials.txt"
 echo "   Email: ${UNIFIED_EMAIL}"
 echo "   📁 File location: $(pwd)/unified_credentials.txt"
-echo ""
-echo "🔧 N8N Configuration Required:"
-echo "   Please update the Supabase credentials in n8n with this SERVICE_ROLE_KEY:"
-echo ""
-echo -e "   ${GREEN}${SERVICE_ROLE_KEY}${NC}"
-echo ""
-echo "   Steps:"
-echo "   1. Go to: http://${ACCESS_HOST}:5678/credentials"
-echo "   2. Find 'Supabase account' credential"
-echo "   3. Click Edit → Update 'Service Role Key' field"
-echo "   4. Paste the key above and Save"
-echo ""
-echo "   💡 To view this key again later, run: grep SERVICE_ROLE_KEY .env"
 echo ""
 echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"
