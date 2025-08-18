@@ -1434,25 +1434,9 @@ fi
 echo "✅ Webhook verification completed"
 
 
-# Ensure InsightsLM was built correctly
-echo -e "${YELLOW}Verifying InsightsLM build for fresh install...${NC}"
-
-# Get ANON_KEY from .env
-ENV_ANON_KEY=$(grep "^ANON_KEY=" .env | cut -d'=' -f2)
-
-# Get ANON_KEY from InsightsLM container  
-CONTAINER_ANON_KEY=$(docker exec insightslm sh -c "grep -o 'eyJhbGciOiJIUzI1NiIsInR5cCI[^\"]*' /usr/share/nginx/html/assets/index*.js 2>/dev/null | head -1" 2>/dev/null || echo "")
-
-if [ "$ENV_ANON_KEY" != "$CONTAINER_ANON_KEY" ] || [ -z "$ENV_ANON_KEY" ]; then
-    echo -e "${YELLOW}Rebuilding InsightsLM with correct credentials...${NC}"
-    docker compose -p localai build insightslm
-    docker compose -p localai stop insightslm
-    docker compose -p localai up -d insightslm
-    sleep 5
-    echo -e "${GREEN}InsightsLM rebuilt with correct credentials${NC}"
-else
-    echo -e "${GREEN}✅ InsightsLM already has correct credentials${NC}"
-fi
+# Since this is a fresh install and credentials were set before building,
+# InsightsLM should already have the correct credentials.
+# No rebuild necessary.
 
 # Save credentials
 cat > unified_credentials.txt << EOF
