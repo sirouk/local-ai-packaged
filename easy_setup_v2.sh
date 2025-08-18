@@ -1219,11 +1219,6 @@ fi
 
 echo "✅ Webhook verification completed"
 
-# Final restart is not needed - services are already running with correct config
-# echo -e "${YELLOW}Restarting all services...${NC}"
-# docker compose -p localai down
-# sleep 5
-# python3 start_services.py --profile "$PROFILE" --environment private
 
 # Ensure InsightsLM was built correctly
 echo -e "${YELLOW}Verifying InsightsLM build for fresh install...${NC}"
@@ -1276,12 +1271,14 @@ echo "Service URLs:"
 echo "📊 Supabase Studio: http://${ACCESS_HOST}:8000"
 echo "🔧 N8N Workflow Editor: http://${ACCESS_HOST}:5678"
 echo "📓 InsightsLM: http://${ACCESS_HOST}:3010"
-# echo "💬 Open WebUI: http://${ACCESS_HOST}:8080"
-# echo "🌐 Flowise: http://${ACCESS_HOST}:3001"
 echo ""
 echo "🔐 Login Credentials saved to: unified_credentials.txt"
 echo "   Email: ${UNIFIED_EMAIL}"
 echo "   📁 File location: $(pwd)/unified_credentials.txt"
+echo ""
+echo "Extra Services:"
+echo "💬 Open WebUI: http://${ACCESS_HOST}:8080"
+echo "🌐 Flowise: http://${ACCESS_HOST}:3001"
 echo ""
 echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"
