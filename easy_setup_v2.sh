@@ -7,15 +7,19 @@ cd $HOME
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Detect operating system
+echo -e "${GREEN}=== InsightsLM Local AI Setup Script ===${NC}"
+echo ""
+
+# Detect operating system first
 if [[ "$OSTYPE" == "darwin"* ]]; then
     IS_MACOS=true
-    echo -e "${YELLOW}Detected macOS system${NC}"
+    echo -e "${BLUE}Detected macOS system${NC}"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     IS_MACOS=false
-    echo -e "${YELLOW}Detected Linux system${NC}"
+    echo -e "${BLUE}Detected Linux system${NC}"
 else
     echo -e "${RED}Unsupported operating system: $OSTYPE${NC}"
     exit 1
@@ -30,23 +34,222 @@ cp_sed() {
     fi
 }
 
-# Repository configuration
-# Original repositories:
-# LOCAL_AI_REPO="https://github.com/coleam00/local-ai-packaged.git"
-# INSIGHTS_LM_REPO="https://github.com/theaiautomators/insights-lm-local-package.git"
-# INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/theaiautomators/insights-lm-local-package"
-
-# Using forked repositories:
-LOCAL_AI_REPO="https://github.com/sirouk/local-ai-packaged.git"
-INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
-INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/sirouk/insights-lm-local-package"
+# =============================================================================
+# EARLY USER CONFIGURATION
+# =============================================================================
 
 # Default Ollama model configuration
 DEFAULT_OLLAMA_MODEL="qwen3:8b-q4_K_M"
 DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
 
-echo -e "${GREEN}=== InsightsLM Local AI Setup Script ===${NC}"
+echo -e "${YELLOW}=== Initial Configuration ===${NC}"
 echo ""
+
+# 1. Model Selection (single question)
+echo -e "${YELLOW}Model Configuration:${NC}"
+echo -e "Default main model: ${GREEN}$DEFAULT_OLLAMA_MODEL${NC}"
+echo -e "Default embedding model: ${GREEN}$DEFAULT_EMBEDDING_MODEL${NC}"
+echo ""
+read -p "Enter main model to use (press Enter for default: $DEFAULT_OLLAMA_MODEL): " -r OLLAMA_MODEL
+OLLAMA_MODEL=${OLLAMA_MODEL:-$DEFAULT_OLLAMA_MODEL}
+
+read -p "Enter embedding model to use (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
+
+echo -e "${GREEN}✓ Using main model: $OLLAMA_MODEL${NC}"
+echo -e "${GREEN}✓ Using embedding model: $EMBEDDING_MODEL${NC}"
+echo ""
+
+# 2. Network Configuration
+echo -e "${YELLOW}Network Configuration:${NC}"
+DETECTED_IP=$(curl -s ipinfo.io/ip 2>/dev/null || echo "Unable to detect")
+if [ "$DETECTED_IP" != "Unable to detect" ]; then
+    echo -e "Detected external IP: ${GREEN}$DETECTED_IP${NC}"
+    echo ""
+    read -p "Use external IP for service URLs? (y/N - press Enter for localhost): " -r USE_EXTERNAL_IP
+    USE_EXTERNAL_IP=${USE_EXTERNAL_IP:-N}
+    
+    if [[ "$USE_EXTERNAL_IP" =~ ^[Yy]$ ]]; then
+        ACCESS_HOST="$DETECTED_IP"
+        echo -e "${GREEN}✓ Using external IP: $ACCESS_HOST${NC}"
+    else
+        ACCESS_HOST="localhost"
+        echo -e "${GREEN}✓ Using localhost for service access${NC}"
+    fi
+else
+    ACCESS_HOST="localhost"
+    echo -e "${YELLOW}Unable to detect external IP, using localhost${NC}"
+fi
+echo ""
+
+# =============================================================================
+# HARDWARE DETECTION AND DEPENDENCY CHECKING
+# =============================================================================
+
+echo -e "${YELLOW}=== Hardware Detection & Dependency Checking ===${NC}"
+echo ""
+
+# Function to check CUDA version
+check_cuda_version() {
+    if command -v nvcc >/dev/null 2>&1; then
+        CUDA_VERSION=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9]*\.[0-9]*\).*/\1/p')
+        CUDA_MAJOR=$(echo $CUDA_VERSION | cut -d. -f1)
+        CUDA_MINOR=$(echo $CUDA_VERSION | cut -d. -f2)
+        
+        echo -e "${BLUE}Found CUDA version: $CUDA_VERSION${NC}"
+        
+        # Check if version is 12.6 or higher
+        if [ "$CUDA_MAJOR" -gt 12 ] || ([ "$CUDA_MAJOR" -eq 12 ] && [ "$CUDA_MINOR" -ge 6 ]); then
+            echo -e "${GREEN}✓ CUDA version $CUDA_VERSION meets minimum requirement (12.6+)${NC}"
+            return 0
+        else
+            echo -e "${RED}✗ CUDA version $CUDA_VERSION is below minimum requirement (12.6+)${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}✗ CUDA toolkit (nvcc) not found${NC}"
+        return 1
+    fi
+}
+
+# Function to check NVIDIA Docker runtime
+check_nvidia_docker_runtime() {
+    if command -v nvidia-container-runtime >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ NVIDIA Container Runtime found${NC}"
+        return 0
+    else
+        echo -e "${YELLOW}⚠ NVIDIA Container Runtime not found${NC}"
+        return 1
+    fi
+}
+
+# Function to install NVIDIA Docker runtime
+install_nvidia_docker_runtime() {
+    echo -e "${YELLOW}Installing NVIDIA Container Runtime...${NC}"
+    
+    if [ "$IS_MACOS" = true ]; then
+        echo -e "${RED}NVIDIA Container Runtime not available on macOS${NC}"
+        return 1
+    fi
+    
+    # Add NVIDIA Container Toolkit repository
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    
+    # Install the runtime
+    sudo apt-get update
+    sudo apt-get install -y nvidia-container-toolkit
+    
+    # Configure Docker
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+    
+    echo -e "${GREEN}✓ NVIDIA Container Runtime installed and configured${NC}"
+}
+
+# Detect compute profile and check dependencies
+PROFILE="cpu"
+DEPENDENCIES_OK=true
+
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${BLUE}macOS detected - checking architecture...${NC}"
+    if [[ $(uname -m) == "arm64" ]]; then
+        PROFILE="cpu"
+        echo -e "${GREEN}✓ Apple Silicon detected - using CPU profile${NC}"
+        echo -e "${YELLOW}Note: Some services will use x86_64 emulation for compatibility${NC}"
+    else
+        echo -e "${BLUE}Intel Mac detected - checking for AMD GPU...${NC}"
+        if system_profiler SPDisplaysDataType 2>/dev/null | grep -q "AMD\|Radeon"; then
+            PROFILE="gpu-amd"
+            echo -e "${GREEN}✓ AMD GPU detected - using GPU-AMD profile${NC}"
+        else
+            echo -e "${YELLOW}No AMD GPU detected - using CPU profile${NC}"
+        fi
+    fi
+else
+    # Linux system - check for NVIDIA first, then AMD
+    echo -e "${BLUE}Linux detected - checking for GPU hardware...${NC}"
+    
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ NVIDIA GPU detected${NC}"
+        nvidia-smi --query-gpu=name --format=csv,noheader,nounits | head -1 | sed 's/^/  GPU: /'
+        
+        PROFILE="gpu-nvidia"
+        echo -e "${BLUE}Checking NVIDIA dependencies...${NC}"
+        
+        # Check CUDA
+        if check_cuda_version; then
+            echo -e "${GREEN}✓ CUDA requirements satisfied${NC}"
+        else
+            echo -e "${RED}✗ CUDA requirements not met${NC}"
+            echo -e "${YELLOW}Please install CUDA 12.6 or higher from: https://developer.nvidia.com/cuda-downloads${NC}"
+            DEPENDENCIES_OK=false
+        fi
+        
+        # Check NVIDIA Docker runtime
+        if ! check_nvidia_docker_runtime; then
+            echo -e "${YELLOW}Installing NVIDIA Container Runtime...${NC}"
+            if install_nvidia_docker_runtime; then
+                echo -e "${GREEN}✓ NVIDIA Container Runtime installed${NC}"
+            else
+                echo -e "${RED}✗ Failed to install NVIDIA Container Runtime${NC}"
+                DEPENDENCIES_OK=false
+            fi
+        fi
+        
+    elif command -v rocminfo >/dev/null 2>&1 || [ -d /opt/rocm ]; then
+        echo -e "${GREEN}✓ AMD GPU detected${NC}"
+        PROFILE="gpu-amd"
+        
+        if command -v rocminfo >/dev/null 2>&1; then
+            rocminfo | grep "Name:" | head -1 | sed 's/^/  GPU: /'
+        fi
+        
+        echo -e "${BLUE}Checking ROCm dependencies...${NC}"
+        if [ -d /opt/rocm ]; then
+            echo -e "${GREEN}✓ ROCm installation found${NC}"
+        else
+            echo -e "${YELLOW}⚠ ROCm not found - GPU acceleration may not work optimally${NC}"
+            echo -e "${YELLOW}Consider installing ROCm from: https://rocm.docs.amd.com/en/latest/deploy/linux/index.html${NC}"
+        fi
+        
+    else
+        echo -e "${YELLOW}No GPU detected - using CPU profile${NC}"
+        PROFILE="cpu"
+    fi
+fi
+
+echo ""
+echo -e "${GREEN}=== Configuration Summary ===${NC}"
+echo -e "Compute Profile: ${GREEN}$PROFILE${NC}"
+echo -e "Main Model: ${GREEN}$OLLAMA_MODEL${NC}"
+echo -e "Embedding Model: ${GREEN}$EMBEDDING_MODEL${NC}"
+echo -e "Access Host: ${GREEN}$ACCESS_HOST${NC}"
+
+if [ "$DEPENDENCIES_OK" = false ]; then
+    echo ""
+    echo -e "${RED}⚠ WARNING: Some dependencies are missing!${NC}"
+    echo -e "${YELLOW}The setup will continue, but GPU acceleration may not work properly.${NC}"
+    echo ""
+    read -p "Continue anyway? (y/N): " -r CONTINUE_ANYWAY
+    if [[ ! "$CONTINUE_ANYWAY" =~ ^[Yy]$ ]]; then
+        echo -e "${RED}Setup cancelled. Please install missing dependencies and try again.${NC}"
+        exit 1
+    fi
+fi
+
+echo ""
+echo -e "${GREEN}✓ All checks completed - proceeding with installation...${NC}"
+echo ""
+
+# Repository configuration
+LOCAL_AI_REPO="https://github.com/sirouk/local-ai-packaged.git"
+INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
+INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/sirouk/insights-lm-local-package"
+
 echo -e "${YELLOW}Using repositories:${NC}"
 echo -e "  Local AI: ${GREEN}${LOCAL_AI_REPO}${NC}"
 echo -e "  InsightsLM: ${GREEN}${INSIGHTS_LM_REPO}${NC}"
@@ -136,42 +339,7 @@ git clone "$INSIGHTS_LM_REPO"
 
 cd "$HOME/local-ai-packaged"
 
-# Ollama Model Configuration
-echo -e "${YELLOW}Ollama Model Configuration${NC}"
-echo -e "Default model: ${GREEN}$DEFAULT_OLLAMA_MODEL${NC}"
-echo -e "Default embedding model: ${GREEN}$DEFAULT_EMBEDDING_MODEL${NC}"
-echo ""
-read -p "Do you want to use the default models? (Y/n): " -r USE_DEFAULT
-USE_DEFAULT=${USE_DEFAULT:-Y}
-
-OLLAMA_MODEL="$DEFAULT_OLLAMA_MODEL"
-EMBEDDING_MODEL="$DEFAULT_EMBEDDING_MODEL"
-
-if [[ ! "$USE_DEFAULT" =~ ^[Yy]$ ]]; then
-    echo ""
-    read -p "Enter the Ollama model to use (e.g., llama3.2, mistral, qwen3:8b-q4_K_M): " -r CUSTOM_MODEL
-    if [ -n "$CUSTOM_MODEL" ]; then
-        OLLAMA_MODEL="$CUSTOM_MODEL"
-        echo -e "${GREEN}Using custom model: $OLLAMA_MODEL${NC}"
-    else
-        echo -e "${YELLOW}No model specified, using default: $OLLAMA_MODEL${NC}"
-    fi
-    
-    echo ""
-    read -p "Enter the embedding model to use (default: $DEFAULT_EMBEDDING_MODEL): " -r CUSTOM_EMBEDDING
-    if [ -n "$CUSTOM_EMBEDDING" ]; then
-        EMBEDDING_MODEL="$CUSTOM_EMBEDDING"
-        echo -e "${GREEN}Using custom embedding model: $EMBEDDING_MODEL${NC}"
-    else
-        echo -e "${YELLOW}Using default embedding model: $EMBEDDING_MODEL${NC}"
-    fi
-fi
-
-echo ""
-echo -e "${GREEN}Configuration:${NC}"
-echo -e "  Main model: $OLLAMA_MODEL"
-echo -e "  Embedding model: $EMBEDDING_MODEL"
-echo ""
+# Model configuration already set at the beginning of the script
 
 # Set up Python virtual environment
 echo -e "${YELLOW}Setting up Python virtual environment...${NC}"
@@ -351,24 +519,7 @@ SERVICE_ROLE_KEY=$(python3 -c "import jwt, time; print(jwt.encode({'role': 'serv
 cp_sed "s/ANON_KEY=.*/ANON_KEY=$ANON_KEY/" .env
 cp_sed "s/SERVICE_ROLE_KEY=.*/SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY/" .env
 
-# Configure access URLs
-echo -e "${YELLOW}Configuring service access URLs...${NC}"
-DETECTED_IP=$(curl -s ipinfo.io/ip)
-echo -e "Detected external IP: ${GREEN}$DETECTED_IP${NC}"
-echo ""
-read -p "Use external IP for service URLs? (y/N - default "N" uses localhost): " -r USE_EXTERNAL_IP
-USE_EXTERNAL_IP=${USE_EXTERNAL_IP:-N}
-# Clean any unexpected input
-USE_EXTERNAL_IP=$(echo "$USE_EXTERNAL_IP" | tr -d '\n\r' | head -c 1)
-
-if [[ "$USE_EXTERNAL_IP" =~ ^[Yy]$ ]]; then
-    ACCESS_HOST="$DETECTED_IP"
-    echo -e "${GREEN}Using external IP for service access: $ACCESS_HOST${NC}"
-else
-    ACCESS_HOST="localhost"
-    echo -e "${GREEN}Using localhost for service access${NC}"
-fi
-
+# Configure access URLs (ACCESS_HOST already set at beginning)
 cp_sed "s|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://${ACCESS_HOST}:8000|" .env
 
 # Source the .env file
@@ -691,27 +842,7 @@ NGINX_CONF
     echo "     → Container stops = Ollama stops on host (forcefully if needed)"
 fi
 
-# Auto-detect compute profile
-echo -e "${YELLOW}Detecting compute profile...${NC}"
-PROFILE="cpu"
-if [ "$IS_MACOS" = true ]; then
-    # Check for Apple Silicon (M1/M2/M3/M4)
-    if [[ $(uname -m) == "arm64" ]]; then
-        PROFILE="cpu"  # Apple Silicon uses CPU for now
-        echo -e "${YELLOW}Apple Silicon detected - using CPU profile${NC}"
-        echo -e "${YELLOW}Note: Some services will use x86_64 emulation for compatibility${NC}"
-    else
-        # Intel Mac - check for AMD GPU
-        if system_profiler SPDisplaysDataType | grep -q "AMD\|Radeon"; then
-            PROFILE="gpu-amd"
-        fi
-    fi
-elif command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
-    PROFILE="gpu-nvidia"
-elif command -v rocminfo >/dev/null 2>&1 || [ -d /opt/rocm ]; then
-    PROFILE="gpu-amd"
-fi
-echo -e "${GREEN}Using profile: $PROFILE${NC}"
+# Compute profile already detected at the beginning of the script
 
 # Start all services first (including storage for bucket creation)
 echo -e "${YELLOW}Starting all services...${NC}"
