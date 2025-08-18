@@ -249,6 +249,7 @@ echo ""
 LOCAL_AI_REPO="https://github.com/sirouk/local-ai-packaged.git"
 INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
 INSIGHTS_LM_RAW_URL="https://raw.githubusercontent.com/sirouk/insights-lm-local-package"
+INSIGHTS_LM_PUBLIC_URL="https://github.com/sirouk/insights-lm-public.git"
 
 echo -e "${YELLOW}Using repositories:${NC}"
 echo -e "  Local AI: ${GREEN}${LOCAL_AI_REPO}${NC}"
@@ -560,6 +561,7 @@ echo "" >> .env
 echo "# Ollama Model Configuration" >> .env
 echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
 echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
+
 
 # Update STUDIO defaults
 cp_sed 's/STUDIO_DEFAULT_ORGANIZATION=.*/STUDIO_DEFAULT_ORGANIZATION="InsightsLM"/' .env
@@ -898,6 +900,14 @@ NGINX_CONF
 fi
 
 # Compute profile already detected at the beginning of the script
+
+# Update Dockerfile to use correct repository URL BEFORE building
+echo -e "${YELLOW}Updating InsightsLM Dockerfile repository URL...${NC}"
+if [ -f "insights-lm-local-package/Dockerfile" ]; then
+    # Replace the hardcoded GitHub URL in the git clone command
+    cp_sed "s|https://github.com/theaiautomators/insights-lm-public.git|${INSIGHTS_LM_PUBLIC_URL}|g" insights-lm-local-package/Dockerfile
+    echo "  Updated Dockerfile to use repository: ${INSIGHTS_LM_PUBLIC_URL}"
+fi
 
 # Start all services first (including storage for bucket creation)
 echo -e "${YELLOW}Starting all services...${NC}"
