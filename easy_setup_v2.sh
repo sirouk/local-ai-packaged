@@ -20,6 +20,30 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     IS_MACOS=false
     echo -e "${BLUE}Detected Linux system${NC}"
+    
+    # Install Docker early on Linux (required for NVIDIA runtime setup)
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}Installing Docker (required for GPU support)...${NC}"
+        # Install basic dependencies for Docker installation
+        sudo apt update >/dev/null 2>&1
+        sudo apt install -y curl >/dev/null 2>&1
+        
+        # Install Docker using official installation script
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        # Add current user to docker group
+        sudo usermod -aG docker $USER
+        # Start and enable Docker
+        sudo systemctl start docker
+        sudo systemctl enable docker
+        echo -e "${GREEN}✓ Docker installed and started${NC}"
+        echo -e "${YELLOW}Note: You may need to log out and back in for Docker group membership to take effect${NC}"
+        rm -f get-docker.sh
+    else
+        echo -e "${GREEN}✓ Docker already installed${NC}"
+        # Ensure Docker is running
+        sudo systemctl start docker 2>/dev/null || true
+    fi
 else
     echo -e "${RED}Unsupported operating system: $OSTYPE${NC}"
     exit 1
@@ -453,25 +477,7 @@ else
     sudo apt update
     sudo apt install -y python3 python3-venv net-tools python3-pip curl git jq
     
-    # Install Docker if not present
-    if ! command -v docker >/dev/null 2>&1; then
-        echo -e "${YELLOW}Installing Docker...${NC}"
-        # Install Docker using official installation script
-        curl -fsSL https://get.docker.com -o get-docker.sh
-        sudo sh get-docker.sh
-        # Add current user to docker group
-        sudo usermod -aG docker $USER
-        # Start and enable Docker
-        sudo systemctl start docker
-        sudo systemctl enable docker
-        echo -e "${GREEN}✓ Docker installed and started${NC}"
-        echo -e "${YELLOW}Note: You may need to log out and back in for Docker group membership to take effect${NC}"
-        rm -f get-docker.sh
-    else
-        echo -e "${GREEN}✓ Docker already installed${NC}"
-        # Ensure Docker is running
-        sudo systemctl start docker 2>/dev/null || true
-    fi
+    # Docker already installed early in script for dependency ordering
     
     # Install yq
     snap install --classic yq 2>/dev/null || {
