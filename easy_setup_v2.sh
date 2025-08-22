@@ -38,25 +38,25 @@ cp_sed() {
 # EARLY USER CONFIGURATION
 # =============================================================================
 
-# Default Ollama model configuration
-DEFAULT_OLLAMA_MODEL="qwen3:8b-q4_K_M"
-DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
+# Default vLLM model configuration (HuggingFace format)
+DEFAULT_VLLM_MODEL="Qwen/Qwen3-8B"
+DEFAULT_EMBEDDING_MODEL="nomic-ai/nomic-embed-text-v1.5"
 
 echo -e "${YELLOW}=== Initial Configuration ===${NC}"
 echo ""
 
 # 1. Model Selection (single question)
 echo -e "${YELLOW}Model Configuration:${NC}"
-echo -e "Default main model: ${GREEN}$DEFAULT_OLLAMA_MODEL${NC}"
+echo -e "Default main model: ${GREEN}$DEFAULT_VLLM_MODEL${NC}"
 echo -e "Default embedding model: ${GREEN}$DEFAULT_EMBEDDING_MODEL${NC}"
 echo ""
-read -p "Enter main model to use (press Enter for default: $DEFAULT_OLLAMA_MODEL): " -r OLLAMA_MODEL
-OLLAMA_MODEL=${OLLAMA_MODEL:-$DEFAULT_OLLAMA_MODEL}
+read -p "Enter main model to use (press Enter for default: $DEFAULT_VLLM_MODEL): " -r VLLM_MODEL
+VLLM_MODEL=${VLLM_MODEL:-$DEFAULT_VLLM_MODEL}
 
 read -p "Enter embedding model to use (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
 EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
 
-echo -e "${GREEN}✓ Using main model: $OLLAMA_MODEL${NC}"
+echo -e "${GREEN}✓ Using main model: $VLLM_MODEL${NC}"
 echo -e "${GREEN}✓ Using embedding model: $EMBEDDING_MODEL${NC}"
 echo ""
 
@@ -225,7 +225,7 @@ fi
 echo ""
 echo -e "${GREEN}=== Configuration Summary ===${NC}"
 echo -e "Compute Profile: ${GREEN}$PROFILE${NC}"
-echo -e "Main Model: ${GREEN}$OLLAMA_MODEL${NC}"
+echo -e "Main Model: ${GREEN}$VLLM_MODEL${NC}"
 echo -e "Embedding Model: ${GREEN}$EMBEDDING_MODEL${NC}"
 echo -e "Access Host: ${GREEN}$ACCESS_HOST${NC}"
 
@@ -353,6 +353,8 @@ if ! grep -q "^\.venv/$" .gitignore 2>/dev/null; then
     # Ensure there's a newline before adding .venv/ (in case file doesn't end with newline)
     echo "" >> .gitignore
     echo ".venv/" >> .gitignore
+    echo ".venv-vllm/" >> .gitignore
+    echo "vllm-docker/" >> .gitignore
     # let's also add .env.previous
     echo ".env.previous" >> .gitignore
     # and unified_credentials.txt
@@ -514,12 +516,17 @@ if [ -f "docker-compose.override.private.yml" ]; then
     yq eval '.services.n8n.ports = ["0.0.0.0:5678:5678"]' -i docker-compose.override.private.yml
 fi
 
-# Update x-init-ollama to use selected models
-echo -e "${YELLOW}Configuring Ollama to pull selected models...${NC}"
-# Update the command in x-init-ollama anchor
-OLLAMA_COMMAND="echo 'Waiting for Ollama proxy to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama proxy ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $OLLAMA_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $EMBEDDING_MODEL"
-yq eval "."x-init-ollama".command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
-echo "  Updated x-init-ollama to pull: $OLLAMA_MODEL and $EMBEDDING_MODEL"
+# Update x-init-vllm to use selected models
+echo -e "${YELLOW}Configuring vLLM to use selected models...${NC}"
+if [ "$IS_MACOS" = true ]; then
+    # For macOS, update the init command for host-based vLLM
+    VLLM_COMMAND="echo 'vLLM will auto-download models on first use: $VLLM_MODEL and $EMBEDDING_MODEL'; echo 'Models configured for vLLM server'"
+    yq eval "."x-init-ollama".command[1] = \"$VLLM_COMMAND\"" -i docker-compose.yml
+    echo "  Updated vLLM configuration to use: $VLLM_MODEL and $EMBEDDING_MODEL"
+else
+    # For non-macOS, the init logic is handled in the Docker setup above
+    echo "  vLLM Docker containers will use: $VLLM_MODEL and $EMBEDDING_MODEL"
+fi
 
 # Generate .env file
 echo -e "${YELLOW}Generating environment configuration...${NC}"
@@ -567,10 +574,10 @@ cat insights-lm-local-package/.env.copy >> .env
 # Update NOTEBOOK_GENERATION_AUTH to use our generated value (used for Header Auth)
 cp_sed "s|NOTEBOOK_GENERATION_AUTH=.*|NOTEBOOK_GENERATION_AUTH=$NOTEBOOK_GENERATION_AUTH|" .env
 
-# Add Ollama model configuration to .env
+# Add vLLM model configuration to .env
 echo "" >> .env
-echo "# Ollama Model Configuration" >> .env
-echo "OLLAMA_MODEL=$OLLAMA_MODEL" >> .env
+echo "# vLLM Model Configuration" >> .env
+echo "VLLM_MODEL=$VLLM_MODEL" >> .env
 echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
 
 
@@ -673,51 +680,64 @@ done
 echo "✅ Supabase Edge Functions configured with webhook environment variables"
 
 # ---------------------------------------------------------
-# Native Ollama setup on macOS + proxy service for Docker
+# Native vLLM setup on macOS + proxy service for Docker
 # ---------------------------------------------------------
 if [ "$IS_MACOS" = true ]; then
-    echo -e "${YELLOW}Setting up native Ollama and proxy service...${NC}"
+    echo -e "${YELLOW}Setting up native vLLM and proxy service...${NC}"
 
-    # 1. Ensure Ollama CLI is installed
-    if ! command -v ollama >/dev/null 2>&1; then
-        echo "  Ollama not found – installing with Homebrew..."
-        brew install ollama
+    # 1. Install uv (Python package manager) if not present
+    if ! command -v uv >/dev/null 2>&1; then
+        echo "  Installing uv Python package manager..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        # Source the newly installed uv
+        source $HOME/.bashrc 2>/dev/null || true
+        source $HOME/.profile 2>/dev/null || true
     fi
-
-    # 2. DON'T start Ollama here - let the Docker container manage it
-    echo "  Ollama will be managed by the Docker proxy service"
     
-    # 3. Stop any existing Ollama processes first (clean slate)
-    echo "  Stopping any existing Ollama processes..."
-    pkill -f "ollama serve" 2>/dev/null || true
+    # Update uv to latest version
+    echo "  Updating uv to latest version..."
+    uv self update
+
+    # 2. Create Python virtual environment for vLLM
+    echo "  Creating Python 3.12 virtual environment for vLLM..."
+    cd "$HOME/local-ai-packaged"
+    if [ -d ".venv-vllm" ]; then
+        rm -rf .venv-vllm
+    fi
+    uv venv --python 3.12 --seed .venv-vllm
+    
+    # 3. Install build dependencies
+    echo "  Installing build dependencies (ninja, cmake)..."
+    if ! command -v ninja >/dev/null 2>&1; then
+        brew install ninja cmake
+    fi
+    
+    # 4. Install vLLM and dependencies
+    echo "  Installing vLLM and dependencies..."
+    source .venv-vllm/bin/activate
+    uv pip install ninja cmake
+    uv pip install vllm
+    
+    # 5. Stop any existing vLLM processes first (clean slate)
+    echo "  Stopping any existing vLLM processes..."
+    pkill -f "vllm.entrypoints.openai.api_server" 2>/dev/null || true
     sleep 2
 
-    # 4. Pre-pull models while we can (before container manages Ollama)
-    echo "  Pre-pulling models $OLLAMA_MODEL and $EMBEDDING_MODEL..."
-    # Start Ollama temporarily just for pulling
-    ollama serve > /tmp/ollama-pull.log 2>&1 &
-    TEMP_OLLAMA_PID=$!
-    sleep 3
-    ollama pull "$OLLAMA_MODEL" || true
-    ollama pull "$EMBEDDING_MODEL" || true
-    # Stop the temporary Ollama
-    kill $TEMP_OLLAMA_PID 2>/dev/null || true
-    sleep 2
-
-    # 5. Create host-side scripts for strict lifecycle coupling
-    echo "  Creating host-side Ollama lifecycle scripts..."
+    # 6. Create host-side scripts for strict lifecycle coupling
+    echo "  Creating host-side vLLM lifecycle scripts..."
     mkdir -p ollama-proxy
 
-    cat > ollama-proxy/start-host-ollama.sh << 'START_HOST_OLLAMA'
+    cat > ollama-proxy/start-host-vllm.sh << 'START_HOST_VLLM'
 #!/bin/bash
 set -e
-PID_FILE="/tmp/ollama-host.pid"
-LOG_FILE="/tmp/ollama-host.log"
+PID_FILE="/tmp/vllm-host.pid"
+LOG_FILE="/tmp/vllm-host.log"
+VENV_PATH="$HOME/local-ai-packaged/.venv-vllm"
 
-echo "Starting Ollama host management..." | tee -a "$LOG_FILE"
+echo "Starting vLLM host management..." | tee -a "$LOG_FILE"
 
-# Function to check if Ollama is bound to 0.0.0.0:11434
-check_ollama_binding() {
+# Function to check if vLLM is bound to 0.0.0.0:11434
+check_vllm_binding() {
   # Check if port 11434 is bound to 0.0.0.0 (accessible from Docker)
   if netstat -an 2>/dev/null | grep -q "*.11434.*LISTEN" || netstat -an 2>/dev/null | grep -q "0.0.0.0.11434.*LISTEN"; then
     return 0  # Correctly bound
@@ -726,54 +746,66 @@ check_ollama_binding() {
   fi
 }
 
-# Stop any existing Ollama processes that aren't properly bound
-if pgrep -f "ollama serve" >/dev/null 2>&1; then
-  echo "Found existing Ollama process(es)..." | tee -a "$LOG_FILE"
+# Stop any existing vLLM processes that aren't properly bound
+if pgrep -f "vllm.entrypoints.openai.api_server" >/dev/null 2>&1; then
+  echo "Found existing vLLM process(es)..." | tee -a "$LOG_FILE"
   
   # Check if current binding is correct
-  if check_ollama_binding; then
-    echo "Ollama already running with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
+  if check_vllm_binding; then
+    echo "vLLM already running with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
     # Get the PID of the correctly running process
-    EXISTING_PID=$(pgrep -f "ollama serve" | head -1)
+    EXISTING_PID=$(pgrep -f "vllm.entrypoints.openai.api_server" | head -1)
     echo $EXISTING_PID > "$PID_FILE"
     exit 0
   else
-    echo "Ollama running with incorrect binding (likely 127.0.0.1 only), stopping..." | tee -a "$LOG_FILE"
-    # Kill existing Ollama processes
-    pkill -f "ollama serve" 2>/dev/null || true
+    echo "vLLM running with incorrect binding (likely 127.0.0.1 only), stopping..." | tee -a "$LOG_FILE"
+    # Kill existing vLLM processes
+    pkill -f "vllm.entrypoints.openai.api_server" 2>/dev/null || true
     sleep 3
     # Force kill if still running
-    pkill -9 -f "ollama serve" 2>/dev/null || true
+    pkill -9 -f "vllm.entrypoints.openai.api_server" 2>/dev/null || true
     sleep 2
   fi
 fi
 
-echo "Starting Ollama with Docker-accessible binding (0.0.0.0:11434)..." | tee -a "$LOG_FILE"
+echo "Starting vLLM with Docker-accessible binding (0.0.0.0:11434)..." | tee -a "$LOG_FILE"
 
-# Start Ollama with proper host binding for Docker access
-nohup env OLLAMA_HOST=0.0.0.0:11434 ollama serve > "$LOG_FILE" 2>&1 &
+# Activate vLLM virtual environment and start server
+cd "$HOME/local-ai-packaged"
+source "$VENV_PATH/bin/activate"
+
+# Read model from environment or use default
+VLLM_MODEL_TO_USE="${VLLM_MODEL:-Qwen/Qwen3-8B}"
+
+# Start vLLM with proper host binding for Docker access
+nohup env VLLM_CPU_KVCACHE_SPACE=48 python3 -m vllm.entrypoints.openai.api_server \
+  --model "$VLLM_MODEL_TO_USE" \
+  --tensor-parallel-size 1 \
+  --gpu-memory-utilization 0.97 \
+  --host 0.0.0.0 \
+  --port 11434 > "$LOG_FILE" 2>&1 &
 HOST_PID=$!
 echo $HOST_PID > "$PID_FILE"
 
-# Wait until port is open and correctly bound (max ~60s)
-for i in {1..60}; do
-  if nc -z localhost 11434 2>/dev/null && check_ollama_binding; then
-    echo "Ollama started successfully on host (PID=$HOST_PID) with Docker-accessible binding" | tee -a "$LOG_FILE"
+# Wait until port is open and correctly bound (max ~180s for model loading)
+for i in {1..180}; do
+  if nc -z localhost 11434 2>/dev/null && check_vllm_binding; then
+    echo "vLLM started successfully on host (PID=$HOST_PID) with Docker-accessible binding" | tee -a "$LOG_FILE"
     exit 0
   fi
   sleep 1
 done
 
-echo "ERROR: Ollama did not start with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
+echo "ERROR: vLLM did not start with correct binding (0.0.0.0:11434)" | tee -a "$LOG_FILE"
 exit 1
-START_HOST_OLLAMA
+START_HOST_VLLM
 
-    chmod +x ollama-proxy/start-host-ollama.sh
+    chmod +x ollama-proxy/start-host-vllm.sh
 
-    cat > ollama-proxy/stop-host-ollama.sh << 'STOP_HOST_OLLAMA'
+    cat > ollama-proxy/stop-host-vllm.sh << 'STOP_HOST_VLLM'
 #!/bin/bash
 set -e
-PID_FILE="/tmp/ollama-host.pid"
+PID_FILE="/tmp/vllm-host.pid"
 
 if [ -f "$PID_FILE" ]; then
   PID=$(cat "$PID_FILE")
@@ -786,16 +818,16 @@ if [ -f "$PID_FILE" ]; then
   fi
   rm -f "$PID_FILE"
 fi
-# Ensure no stray serve remains
-pkill -f "ollama serve" 2>/dev/null || true
-STOP_HOST_OLLAMA
+# Ensure no stray vLLM server remains
+pkill -f "vllm.entrypoints.openai.api_server" 2>/dev/null || true
+STOP_HOST_VLLM
 
-    chmod +x ollama-proxy/stop-host-ollama.sh
+    chmod +x ollama-proxy/stop-host-vllm.sh
 
-    cat > ollama-proxy/watch-ollama-container.sh << 'WATCH_OLLAMA'
+    cat > ollama-proxy/watch-vllm-container.sh << 'WATCH_VLLM'
 #!/bin/bash
 set -e
-LOG_FILE="/tmp/ollama-container-watch.log"
+LOG_FILE="/tmp/vllm-container-watch.log"
 
 # Wait for Docker to be available
 for i in {1..30}; do
@@ -806,12 +838,12 @@ for i in {1..30}; do
 done
 
 # Listen for events on the specific container name
-# When the container stops/dies, stop Ollama on host
+# When the container stops/dies, stop vLLM on host
 (docker events --filter container=ollama --format '{{.Action}}' 2>>"$LOG_FILE" | while read -r action; do
   case "$action" in
     stop|die|kill)
-      echo "Detected ollama container action: $action — stopping host Ollama" | tee -a "$LOG_FILE"
-      bash ./ollama-proxy/stop-host-ollama.sh || true
+      echo "Detected ollama container action: $action — stopping host vLLM" | tee -a "$LOG_FILE"
+      bash ./ollama-proxy/stop-host-vllm.sh || true
       exit 0
       ;;
     *)
@@ -819,16 +851,16 @@ done
       ;;
   esac
 done) &
-WATCH_OLLAMA
+WATCH_VLLM
 
-    chmod +x ollama-proxy/watch-ollama-container.sh
+    chmod +x ollama-proxy/watch-vllm-container.sh
 
-    # 6. Start Ollama on host and launch watcher
-    echo "  Starting Ollama on host and launching watcher..."
-    ./ollama-proxy/start-host-ollama.sh
-    nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
+    # 7. Start vLLM on host and launch watcher
+    echo "  Starting vLLM on host and launching watcher..."
+    ./ollama-proxy/start-host-vllm.sh
+    nohup ./ollama-proxy/watch-vllm-container.sh >/dev/null 2>&1 &
 
-    # 7. Update docker-compose.yml: add lightweight proxy and remove heavy Ollama containers
+    # 8. Update docker-compose.yml: add lightweight proxy and remove heavy Ollama containers
     DC_FILE="docker-compose.yml"
 
     # Remove heavy Ollama-related services if they exist
@@ -838,8 +870,8 @@ WATCH_OLLAMA
         fi
     done
 
-    # Create nginx configuration for Ollama proxy with Host header rewriting
-    echo "  Creating nginx configuration for Ollama proxy..."
+    # Create nginx configuration for vLLM proxy with Host header rewriting
+    echo "  Creating nginx configuration for vLLM proxy..."
     mkdir -p ollama-proxy/nginx
     
     cat > ollama-proxy/nginx/nginx.conf << 'NGINX_CONF'
@@ -848,7 +880,7 @@ events {
 }
 
 http {
-    upstream ollama_backend {
+    upstream vllm_backend {
         server host.docker.internal:11434;
     }
     
@@ -856,7 +888,7 @@ http {
         listen 11434;
         
         location / {
-            proxy_pass http://ollama_backend;
+            proxy_pass http://vllm_backend;
             proxy_set_header Host localhost:11434;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -906,8 +938,140 @@ NGINX_CONF
     done
 
     echo "  ✅ Proxy service 'ollama' configured with watcher-based lifecycle coupling"
-    echo "     → Container starts = Ollama starts on host"
-    echo "     → Container stops = Ollama stops on host (forcefully if needed)"
+    echo "     → Container starts = vLLM starts on host"
+    echo "     → Container stops = vLLM stops on host (forcefully if needed)"
+else
+    # ---------------------------------------------------------
+    # vLLM Docker setup for non-macOS systems
+    # ---------------------------------------------------------
+    echo -e "${YELLOW}Setting up vLLM Docker containers for non-macOS...${NC}"
+    
+    # Create custom vLLM Dockerfile
+    echo "  Creating custom vLLM Dockerfile..."
+    mkdir -p vllm-docker
+    
+    cat > vllm-docker/Dockerfile << 'VLLM_DOCKERFILE'
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vLLM
+RUN pip install --no-cache-dir vllm
+
+# Set working directory
+WORKDIR /app
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Default values\n\
+MODEL=${VLLM_MODEL:-"Qwen/Qwen3-8B"}\n\
+HOST=${VLLM_HOST:-"0.0.0.0"}\n\
+PORT=${VLLM_PORT:-"11434"}\n\
+\n\
+echo "Starting vLLM server with model: $MODEL"\n\
+echo "Listening on: $HOST:$PORT"\n\
+\n\
+# Start vLLM server with OpenAI-compatible API\n\
+exec python -m vllm.entrypoints.openai.api_server \\\n\
+    --model "$MODEL" \\\n\
+    --host "$HOST" \\\n\
+    --port "$PORT" \\\n\
+    --tensor-parallel-size 1 \\\n\
+    --gpu-memory-utilization 0.95 \\\n\
+    --max-model-len 8192\n\
+' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+EXPOSE 11434
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+VLLM_DOCKERFILE
+
+    # Update docker-compose.yml to use vLLM for ollama services
+    echo "  Updating docker-compose.yml to use vLLM instead of Ollama..."
+    
+    # Update x-ollama anchor to use custom vLLM image
+    yq eval '.x-ollama.image = "./vllm-docker"' -i docker-compose.yml
+    yq eval '.x-ollama.build.context = "./vllm-docker"' -i docker-compose.yml
+    yq eval '.x-ollama.build.dockerfile = "Dockerfile"' -i docker-compose.yml
+    yq eval 'del(.x-ollama.volumes)' -i docker-compose.yml  # Remove ollama storage mount
+    
+    # Update environment variables for vLLM
+    yq eval '.x-ollama.environment = [
+        "VLLM_MODEL='$VLLM_MODEL'",
+        "VLLM_HOST=0.0.0.0", 
+        "VLLM_PORT=11434"
+    ]' -i docker-compose.yml
+    
+    # Update x-init-ollama to be a simple wait/health check instead of model pulling
+    yq eval '.x-init-ollama.image = "curlimages/curl:latest"' -i docker-compose.yml
+    yq eval 'del(.x-init-ollama.volumes)' -i docker-compose.yml
+    yq eval '.x-init-ollama.command = [
+        "sh", "-c", 
+        "echo \"Waiting for vLLM server to be ready...\"; for i in $(seq 1 120); do if curl -s http://ollama:11434/health >/dev/null 2>&1; then echo \"vLLM server ready!\"; exit 0; fi; sleep 5; done; echo \"vLLM server not ready after 10 minutes\"; exit 1"
+    ]' -i docker-compose.yml
+    
+    # For GPU profiles, add appropriate device mappings and runtime
+    if [ "$PROFILE" = "gpu-nvidia" ]; then
+        echo "  Configuring NVIDIA GPU support for vLLM..."
+        # Add NVIDIA runtime and devices to ollama-gpu service
+        yq eval '.services.ollama-gpu.runtime = "nvidia"' -i docker-compose.yml
+        yq eval '.services.ollama-gpu.environment += ["NVIDIA_VISIBLE_DEVICES=all"]' -i docker-compose.yml
+        yq eval '.services.ollama-gpu.environment += ["NVIDIA_DRIVER_CAPABILITIES=compute,utility"]' -i docker-compose.yml
+    elif [ "$PROFILE" = "gpu-amd" ]; then
+        echo "  Configuring AMD GPU support for vLLM..."
+        # Update the base image for AMD GPU support (vLLM with ROCm)
+        cat > vllm-docker/Dockerfile << 'VLLM_AMD_DOCKERFILE'
+FROM rocm/pytorch:rocm6.0_ubuntu20.04_py3.9_pytorch_2.1.1
+
+# Install vLLM with ROCm support
+RUN pip install --no-cache-dir vllm
+
+# Set working directory
+WORKDIR /app
+
+# Create entrypoint script (same as above but with ROCm environment)
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# AMD ROCm environment\n\
+export HSA_OVERRIDE_GFX_VERSION=10.3.0\n\
+export ROCM_PATH=/opt/rocm\n\
+\n\
+# Default values\n\
+MODEL=${VLLM_MODEL:-"Qwen/Qwen3-8B"}\n\
+HOST=${VLLM_HOST:-"0.0.0.0"}\n\
+PORT=${VLLM_PORT:-"11434"}\n\
+\n\
+echo "Starting vLLM server with AMD GPU support"\n\
+echo "Model: $MODEL, Host: $HOST:$PORT"\n\
+\n\
+# Start vLLM server with OpenAI-compatible API\n\
+exec python -m vllm.entrypoints.openai.api_server \\\n\
+    --model "$MODEL" \\\n\
+    --host "$HOST" \\\n\
+    --port "$PORT" \\\n\
+    --tensor-parallel-size 1 \\\n\
+    --gpu-memory-utilization 0.95 \\\n\
+    --max-model-len 8192\n\
+' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+EXPOSE 11434
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+VLLM_AMD_DOCKERFILE
+    fi
+    
+    echo "  ✅ Docker-based vLLM configured to replace Ollama services"
+    echo "     → Service name 'ollama' maintained for DNS compatibility"
+    echo "     → vLLM will auto-download HuggingFace models: $VLLM_MODEL"
+    echo "     → OpenAI-compatible API served on port 11434"
 fi
 
 # Compute profile already detected at the beginning of the script
@@ -1210,10 +1374,10 @@ WORKFLOW_COUNT=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
 echo "  Found $WORKFLOW_COUNT InsightsLM workflows to update"
 
 # Update main model references (qwen3:8b-q4_K_M -> user selected model)
-echo "  Updating main model references from qwen3:8b-q4_K_M to $OLLAMA_MODEL..."
+echo "  Updating main model references from qwen3:8b-q4_K_M to $VLLM_MODEL..."
 MAIN_MODEL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
 UPDATE workflow_entity 
-SET nodes = REPLACE(nodes::text, '\"model\": \"qwen3:8b-q4_K_M\"', '\"model\": \"$OLLAMA_MODEL\"')::jsonb
+SET nodes = REPLACE(nodes::text, '\"model\": \"qwen3:8b-q4_K_M\"', '\"model\": \"$VLLM_MODEL\"')::jsonb
 WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%qwen3:8b-q4_K_M%'
 RETURNING id;" 2>/dev/null | wc -l)
 echo "    Updated main model in $MAIN_MODEL_UPDATES workflows"
@@ -1252,7 +1416,7 @@ AND (nodes::text LIKE '%qwen3:8b-q4_K_M%' OR nodes::text LIKE '%nomic-embed-text
 
 if [ "$REMAINING_OLD_MODELS" = "0" ]; then
     echo -e "${GREEN}✅ Successfully updated all workflow model references${NC}"
-    echo "    Main model: $OLLAMA_MODEL"
+    echo "    Main model: $VLLM_MODEL"
     echo "    Embedding model: $EMBEDDING_MODEL"
 else
     echo -e "${YELLOW}⚠️  $REMAINING_OLD_MODELS workflows may still contain old model references${NC}"
