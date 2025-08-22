@@ -696,7 +696,17 @@ if [ "$IS_MACOS" = true ]; then
     
     # Update uv to latest version
     echo "  Updating uv to latest version..."
-    uv self update
+    if ! uv self update 2>/dev/null; then
+        echo "    uv self-update not available (likely installed via package manager)"
+        if command -v brew >/dev/null 2>&1; then
+            echo "    Trying to update via Homebrew..."
+            brew upgrade uv 2>/dev/null || echo "    Homebrew update failed or uv already latest version"
+        else
+            echo "    Continuing with current uv version..."
+        fi
+    else
+        echo "    uv updated successfully"
+    fi
 
     # 2. Create Python virtual environment for vLLM
     echo "  Creating Python 3.12 virtual environment for vLLM..."
