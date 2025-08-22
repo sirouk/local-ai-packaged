@@ -132,22 +132,139 @@ install_nvidia_docker_runtime() {
         return 1
     fi
     
-    # Add NVIDIA Container Toolkit repository
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    # Try multiple installation methods
+    RUNTIME_INSTALLED=false
     
-    # Install the runtime
-    sudo apt-get update
-    sudo apt-get install -y nvidia-container-toolkit
+    # Method 1: Official NVIDIA repository (recommended)
+    echo "  Trying official NVIDIA repository..."
+    if command -v lsb_release >/dev/null 2>&1; then
+        DISTRO=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+        VERSION=$(lsb_release -sr)
+    else
+        # Fallback: read from os-release
+        DISTRO=$(. /etc/os-release; echo $ID)
+        VERSION=$(. /etc/os-release; echo $VERSION_ID)
+    fi
     
-    # Configure Docker
-    sudo nvidia-ctk runtime configure --runtime=docker
-    sudo systemctl restart docker
+    # Clean up any broken repository files first
+    sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
     
-    echo -e "${GREEN}✓ NVIDIA Container Runtime installed and configured${NC}"
+    case "$DISTRO" in
+        ubuntu)
+            echo "    Detected Ubuntu $VERSION"
+            # Use official Ubuntu repository
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$(ARCH) /" | \
+                sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            
+            if sudo apt-get update 2>/dev/null && sudo apt-get install -y nvidia-container-toolkit 2>/dev/null; then
+                RUNTIME_INSTALLED=true
+                echo "    ✓ Installed via official repository"
+            else
+                echo "    ✗ Official repository failed"
+                sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            fi
+            ;;
+        debian)
+            echo "    Detected Debian $VERSION"
+            # Use official Debian repository
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$(ARCH) /" | \
+                sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            
+            if sudo apt-get update 2>/dev/null && sudo apt-get install -y nvidia-container-toolkit 2>/dev/null; then
+                RUNTIME_INSTALLED=true
+                echo "    ✓ Installed via official repository"
+            else
+                echo "    ✗ Official repository failed"
+                sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            fi
+            ;;
+        *)
+            echo "    Unsupported distribution: $DISTRO $VERSION"
+            ;;
+    esac
+    
+    # Method 2: Try direct package download if repository failed
+    if [ "$RUNTIME_INSTALLED" = false ]; then
+        echo "  Trying direct package download..."
+        TEMP_DIR=$(mktemp -d)
+        cd "$TEMP_DIR"
+        
+        # Download packages directly
+        if wget -q https://github.com/NVIDIA/libnvidia-container/releases/latest/download/libnvidia-container1_1.16.2-1_amd64.deb && \
+           wget -q https://github.com/NVIDIA/libnvidia-container/releases/latest/download/libnvidia-container-tools_1.16.2-1_amd64.deb && \
+           wget -q https://github.com/NVIDIA/nvidia-container-toolkit/releases/latest/download/nvidia-container-toolkit_1.16.2-1_amd64.deb; then
+            
+            if sudo dpkg -i *.deb 2>/dev/null || sudo apt-get install -f -y 2>/dev/null; then
+                RUNTIME_INSTALLED=true
+                echo "    ✓ Installed via direct package download"
+            else
+                echo "    ✗ Direct package installation failed"
+            fi
+        else
+            echo "    ✗ Could not download packages"
+        fi
+        
+        cd - >/dev/null
+        rm -rf "$TEMP_DIR"
+    fi
+    
+    # Configure Docker if runtime was installed
+    if [ "$RUNTIME_INSTALLED" = true ]; then
+        echo "  Configuring Docker for NVIDIA runtime..."
+        if command -v nvidia-ctk >/dev/null 2>&1; then
+            sudo nvidia-ctk runtime configure --runtime=docker 2>/dev/null || {
+                echo "    Warning: nvidia-ctk configure failed, trying manual configuration..."
+                # Manual Docker daemon.json configuration
+                DOCKER_CONFIG="/etc/docker/daemon.json"
+                if [ ! -f "$DOCKER_CONFIG" ]; then
+                    sudo mkdir -p /etc/docker
+                    echo '{}' | sudo tee "$DOCKER_CONFIG" >/dev/null
+                fi
+                
+                # Add nvidia runtime to daemon.json
+                sudo python3 -c "
+import json
+import sys
+try:
+    with open('$DOCKER_CONFIG', 'r') as f:
+        config = json.load(f)
+except:
+    config = {}
+
+if 'runtimes' not in config:
+    config['runtimes'] = {}
+
+config['runtimes']['nvidia'] = {
+    'path': 'nvidia-container-runtime',
+    'runtimeArgs': []
+}
+
+with open('$DOCKER_CONFIG', 'w') as f:
+    json.dump(config, f, indent=2)
+" 2>/dev/null || echo "    Manual configuration also failed"
+            }
+            
+            # Restart Docker
+            if sudo systemctl restart docker 2>/dev/null; then
+                echo -e "${GREEN}✓ NVIDIA Container Runtime installed and configured${NC}"
+                return 0
+            else
+                echo "    Warning: Could not restart Docker"
+            fi
+        else
+            echo "    Warning: nvidia-ctk not found after installation"
+        fi
+    fi
+    
+    if [ "$RUNTIME_INSTALLED" = false ]; then
+        echo -e "${YELLOW}⚠ Could not install NVIDIA Container Runtime${NC}"
+        echo -e "${YELLOW}  GPU acceleration may be limited, but vLLM will still work${NC}"
+        return 1
+    fi
+    
+    return 0
 }
 
 # Detect compute profile and check dependencies
@@ -195,8 +312,9 @@ else
             if install_nvidia_docker_runtime; then
                 echo -e "${GREEN}✓ NVIDIA Container Runtime installed${NC}"
             else
-                echo -e "${RED}✗ Failed to install NVIDIA Container Runtime${NC}"
-                DEPENDENCIES_OK=false
+                echo -e "${YELLOW}⚠ NVIDIA Container Runtime installation failed${NC}"
+                echo -e "${YELLOW}  vLLM will still work with GPU acceleration, but may have limited container runtime features${NC}"
+                # Don't fail completely - vLLM can still use GPU without nvidia-container-runtime
             fi
         fi
         
@@ -274,7 +392,33 @@ else
     # Linux package installation
     sudo apt update
     sudo apt install -y python3 python3-venv net-tools python3-pip curl git jq
-    snap install --classic yq
+    
+    # Install Docker if not present
+    if ! command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}Installing Docker...${NC}"
+        # Install Docker using official installation script
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        # Add current user to docker group
+        sudo usermod -aG docker $USER
+        # Start and enable Docker
+        sudo systemctl start docker
+        sudo systemctl enable docker
+        echo -e "${GREEN}✓ Docker installed and started${NC}"
+        echo -e "${YELLOW}Note: You may need to log out and back in for Docker group membership to take effect${NC}"
+        rm -f get-docker.sh
+    else
+        echo -e "${GREEN}✓ Docker already installed${NC}"
+        # Ensure Docker is running
+        sudo systemctl start docker 2>/dev/null || true
+    fi
+    
+    # Install yq
+    snap install --classic yq 2>/dev/null || {
+        echo -e "${YELLOW}Installing yq via direct download...${NC}"
+        sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+    }
     echo -e "${GREEN}Linux packages installed successfully${NC}"
 fi
 
@@ -791,7 +935,7 @@ VLLM_MODEL_TO_USE="${VLLM_MODEL:-Qwen/Qwen3-8B}"
 nohup env VLLM_CPU_KVCACHE_SPACE=48 python3 -m vllm.entrypoints.openai.api_server \
   --model "$VLLM_MODEL_TO_USE" \
   --tensor-parallel-size 1 \
-  --gpu-memory-utilization 0.97 \
+  --gpu-memory-utilization 0.85 \
   --host 0.0.0.0 \
   --port 11434 > "$LOG_FILE" 2>&1 &
 HOST_PID=$!
@@ -994,7 +1138,7 @@ exec python -m vllm.entrypoints.openai.api_server \\\n\
     --host "$HOST" \\\n\
     --port "$PORT" \\\n\
     --tensor-parallel-size 1 \\\n\
-    --gpu-memory-utilization 0.95 \\\n\
+    --gpu-memory-utilization 0.85 \\\n\
     --max-model-len 8192\n\
 ' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
@@ -1030,10 +1174,29 @@ VLLM_DOCKERFILE
     # For GPU profiles, add appropriate device mappings and runtime
     if [ "$PROFILE" = "gpu-nvidia" ]; then
         echo "  Configuring NVIDIA GPU support for vLLM..."
-        # Add NVIDIA runtime and devices to ollama-gpu service
-        yq eval '.services.ollama-gpu.runtime = "nvidia"' -i docker-compose.yml
+        
+        # Check if NVIDIA runtime is available
+        if command -v nvidia-container-runtime >/dev/null 2>&1 || command -v nvidia-ctk >/dev/null 2>&1; then
+            echo "    Adding NVIDIA container runtime configuration..."
+            yq eval '.services.ollama-gpu.runtime = "nvidia"' -i docker-compose.yml
+        else
+            echo "    NVIDIA runtime not available, using device mapping instead..."
+            # Map all available NVIDIA devices dynamically
+            yq eval '.services.ollama-gpu.devices = ["/dev/nvidiactl:/dev/nvidiactl", "/dev/nvidia-uvm:/dev/nvidia-uvm"]' -i docker-compose.yml
+            # Add all nvidia GPU devices present on the system
+            if ls /dev/nvidia[0-9]* >/dev/null 2>&1; then
+                for gpu_dev in /dev/nvidia[0-9]*; do
+                    yq eval ".services.ollama-gpu.devices += [\"$gpu_dev:$gpu_dev\"]" -i docker-compose.yml
+                done
+                echo "    Mapped $(ls /dev/nvidia[0-9]* | wc -l) GPU device(s)"
+            fi
+        fi
+        
+        # Add environment variables for GPU support  
         yq eval '.services.ollama-gpu.environment += ["NVIDIA_VISIBLE_DEVICES=all"]' -i docker-compose.yml
         yq eval '.services.ollama-gpu.environment += ["NVIDIA_DRIVER_CAPABILITIES=compute,utility"]' -i docker-compose.yml
+        # Use all available GPUs (vLLM will auto-detect and use appropriately)
+        yq eval '.services.ollama-gpu.environment += ["CUDA_VISIBLE_DEVICES=all"]' -i docker-compose.yml
     elif [ "$PROFILE" = "gpu-amd" ]; then
         echo "  Configuring AMD GPU support for vLLM..."
         # Update the base image for AMD GPU support (vLLM with ROCm)
@@ -1068,7 +1231,7 @@ exec python -m vllm.entrypoints.openai.api_server \\\n\
     --host "$HOST" \\\n\
     --port "$PORT" \\\n\
     --tensor-parallel-size 1 \\\n\
-    --gpu-memory-utilization 0.95 \\\n\
+    --gpu-memory-utilization 0.85 \\\n\
     --max-model-len 8192\n\
 ' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
@@ -1660,6 +1823,15 @@ echo ""
 echo -e "${GREEN}============================================================${NC}"
 echo -e "${GREEN}🎉 === SETUP COMPLETE === 🎉${NC}"
 echo -e "${GREEN}============================================================${NC}"
+
+# Check if user needs to refresh Docker permissions
+if ! docker ps >/dev/null 2>&1 && groups | grep -q docker; then
+    echo -e "${YELLOW}⚠️  IMPORTANT: Docker group permissions may need refresh${NC}"
+    echo -e "${YELLOW}   If you encounter Docker permission errors, try:${NC}"
+    echo -e "${YELLOW}   1. Log out and log back in, OR${NC}"
+    echo -e "${YELLOW}   2. Run: newgrp docker${NC}"
+    echo ""
+fi
 echo ""
 echo "Service URLs:"
 echo "📊 Supabase Studio: http://${ACCESS_HOST}:8000"
