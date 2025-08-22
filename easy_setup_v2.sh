@@ -62,23 +62,83 @@ echo ""
 
 # 2. Network Configuration
 echo -e "${YELLOW}Network Configuration:${NC}"
+
+# Function to validate IP address
+validate_ip() {
+    local ip=$1
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        IFS='.' read -ra ADDR <<< "$ip"
+        for i in "${ADDR[@]}"; do
+            if [[ $i -gt 255 ]]; then
+                return 1
+            fi
+        done
+        return 0
+    fi
+    return 1
+}
+
 DETECTED_IP=$(curl -s ipinfo.io/ip 2>/dev/null || echo "Unable to detect")
 if [ "$DETECTED_IP" != "Unable to detect" ]; then
     echo -e "Detected external IP: ${GREEN}$DETECTED_IP${NC}"
     echo ""
-    read -p "Use external IP for service URLs? (y/N - press Enter for localhost): " -r USE_EXTERNAL_IP
-    USE_EXTERNAL_IP=${USE_EXTERNAL_IP:-N}
+    echo "Service URL options:"
+    echo "  • Enter 'y' to use detected external IP: $DETECTED_IP"
+    echo "  • Enter 'N' or press Enter for localhost"
+    echo "  • Enter a custom IP address (e.g., 192.168.1.100)"
+    echo ""
     
-    if [[ "$USE_EXTERNAL_IP" =~ ^[Yy]$ ]]; then
-        ACCESS_HOST="$DETECTED_IP"
-        echo -e "${GREEN}✓ Using external IP: $ACCESS_HOST${NC}"
-    else
-        ACCESS_HOST="localhost"
-        echo -e "${GREEN}✓ Using localhost for service access${NC}"
-    fi
+    while true; do
+        read -p "Service URL configuration (y/N/custom IP): " -r USER_INPUT
+        USER_INPUT=${USER_INPUT:-N}
+        
+        case "$USER_INPUT" in
+            [Yy]|[Yy][Ee][Ss])
+                ACCESS_HOST="$DETECTED_IP"
+                echo -e "${GREEN}✓ Using detected external IP: $ACCESS_HOST${NC}"
+                break
+                ;;
+            [Nn]|[Nn][Oo]|"")
+                ACCESS_HOST="localhost"
+                echo -e "${GREEN}✓ Using localhost for service access${NC}"
+                break
+                ;;
+            *)
+                if validate_ip "$USER_INPUT"; then
+                    ACCESS_HOST="$USER_INPUT"
+                    echo -e "${GREEN}✓ Using custom IP: $ACCESS_HOST${NC}"
+                    break
+                else
+                    echo -e "${RED}✗ Invalid IP address format. Please enter a valid IP (e.g., 192.168.1.100) or y/N${NC}"
+                fi
+                ;;
+        esac
+    done
 else
     ACCESS_HOST="localhost"
-    echo -e "${YELLOW}Unable to detect external IP, using localhost${NC}"
+    echo -e "${YELLOW}Unable to detect external IP${NC}"
+    echo ""
+    echo "Service URL options:"
+    echo "  • Press Enter for localhost"
+    echo "  • Enter a custom IP address (e.g., 192.168.1.100)"
+    echo ""
+    
+    while true; do
+        read -p "Service URL configuration (localhost/custom IP): " -r USER_INPUT
+        USER_INPUT=${USER_INPUT:-localhost}
+        
+        if [ "$USER_INPUT" = "localhost" ] || [ "$USER_INPUT" = "" ]; then
+            ACCESS_HOST="localhost"
+            echo -e "${GREEN}✓ Using localhost for service access${NC}"
+            break
+        elif validate_ip "$USER_INPUT"; then
+            ACCESS_HOST="$USER_INPUT"
+            echo -e "${GREEN}✓ Using custom IP: $ACCESS_HOST${NC}"
+            break
+        else
+            echo -e "${RED}✗ Invalid IP address format. Please enter a valid IP (e.g., 192.168.1.100) or press Enter for localhost${NC}"
+        fi
+    done
 fi
 echo ""
 
