@@ -62,9 +62,9 @@ cp_sed() {
 # EARLY USER CONFIGURATION
 # =============================================================================
 
-# Default vLLM model configuration (HuggingFace format)
-DEFAULT_VLLM_MODEL="Qwen/Qwen3-8B"
-DEFAULT_EMBEDDING_MODEL="nomic-ai/nomic-embed-text-v1.5"
+# Default vLLM model configuration (HuggingFace format) - using smaller models for Apple Silicon CPU
+DEFAULT_VLLM_MODEL="TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+DEFAULT_EMBEDDING_MODEL="sentence-transformers/all-MiniLM-L6-v2"
 
 echo -e "${YELLOW}=== Initial Configuration ===${NC}"
 echo ""
@@ -892,6 +892,10 @@ echo "✅ Supabase Edge Functions configured with webhook environment variables"
 # ---------------------------------------------------------
 # Native vLLM setup on macOS + proxy service for Docker
 # ---------------------------------------------------------
+
+# Initialize vLLM status tracking
+VLLM_STARTUP_SUCCESS=false
+
 if [ "$IS_MACOS" = true ]; then
     echo -e "${YELLOW}Setting up native vLLM and proxy service...${NC}"
 
@@ -958,11 +962,22 @@ echo "Starting vLLM host management..." | tee -a "$LOG_FILE"
 
 # Function to check if vLLM is bound to 0.0.0.0:11434
 check_vllm_binding() {
-  # Check if port 11434 is bound to 0.0.0.0 (accessible from Docker)
-  if netstat -an 2>/dev/null | grep -q "*.11434.*LISTEN" || netstat -an 2>/dev/null | grep -q "0.0.0.0.11434.*LISTEN"; then
-    return 0  # Correctly bound
+  # Check if port 11434 is bound (accessible from Docker) 
+  # On macOS, use lsof which is more reliable than netstat
+  if command -v lsof >/dev/null 2>&1; then
+    # Check if process is listening on port 11434 (any interface including 0.0.0.0)
+    if lsof -i :11434 2>/dev/null | grep -q "LISTEN\|ESTABLISHED"; then
+      return 0  # Correctly bound and ready
+    else
+      return 1  # Not ready yet
+    fi
   else
-    return 1  # Not correctly bound
+    # Fallback to netstat for non-macOS systems
+    if netstat -an 2>/dev/null | grep -q "*.11434.*LISTEN" || netstat -an 2>/dev/null | grep -q "0.0.0.0.11434.*LISTEN"; then
+      return 0  # Correctly bound
+    else
+      return 1  # Not correctly bound
+    fi
   fi
 }
 
@@ -995,24 +1010,42 @@ cd "$HOME/local-ai-packaged"
 source "$VENV_PATH/bin/activate"
 
 # Read model from environment or use default
-VLLM_MODEL_TO_USE="${VLLM_MODEL:-Qwen/Qwen3-8B}"
+VLLM_MODEL_TO_USE="${VLLM_MODEL:-TinyLlama/TinyLlama-1.1B-Chat-v1.0}"
 
-# Start vLLM with proper host binding for Docker access
-nohup env VLLM_CPU_KVCACHE_SPACE=48 python3 -m vllm.entrypoints.openai.api_server \
+# Start vLLM with proper host binding for Docker access and Apple Silicon optimizations
+nohup env VLLM_CPU_KVCACHE_SPACE=4 python3 -m vllm.entrypoints.openai.api_server \
   --model "$VLLM_MODEL_TO_USE" \
   --tensor-parallel-size 1 \
-  --gpu-memory-utilization 0.85 \
+  --max-model-len 2048 \
+  --max-num-batched-tokens 2048 \
+  --block-size 16 \
+  --swap-space 4 \
+  --cpu-offload-gb 2 \
+  --enforce-eager \
   --host 0.0.0.0 \
   --port 11434 > "$LOG_FILE" 2>&1 &
 HOST_PID=$!
 echo $HOST_PID > "$PID_FILE"
 
-# Wait until port is open and correctly bound (max ~180s for model loading)
-for i in {1..180}; do
-  if nc -z localhost 11434 2>/dev/null && check_vllm_binding; then
+# Wait until port is open and correctly bound (max ~600s for model loading on Apple Silicon)
+for i in {1..600}; do
+  # First check if vLLM process is still running
+  if ! kill -0 "$HOST_PID" 2>/dev/null; then
+    echo "ERROR: vLLM process died during startup" | tee -a "$LOG_FILE"
+    exit 1
+  fi
+  
+  # Check if server is responding to health checks  
+  if curl -s --max-time 1 http://localhost:11434/health >/dev/null 2>&1; then
     echo "vLLM started successfully on host (PID=$HOST_PID) with Docker-accessible binding" | tee -a "$LOG_FILE"
     exit 0
   fi
+  
+  # Progress indicator every 30 seconds
+  if [ $((i % 30)) -eq 0 ]; then
+    echo "  Still waiting for vLLM to complete model loading... (${i}s elapsed)" | tee -a "$LOG_FILE"
+  fi
+  
   sleep 1
 done
 
@@ -1075,10 +1108,94 @@ WATCH_VLLM
 
     chmod +x ollama-proxy/watch-vllm-container.sh
 
-    # 7. Start vLLM on host and launch watcher
+    # 7. Start vLLM on host and launch watcher (with error handling)
     echo "  Starting vLLM on host and launching watcher..."
-    ./ollama-proxy/start-host-vllm.sh
-    nohup ./ollama-proxy/watch-vllm-container.sh >/dev/null 2>&1 &
+    VLLM_STARTUP_SUCCESS=false
+    
+    # Use gtimeout if available (from coreutils), otherwise implement bash timeout
+    TIMEOUT_CMD=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        TIMEOUT_CMD="gtimeout 120"
+    elif command -v timeout >/dev/null 2>&1; then
+        TIMEOUT_CMD="timeout 120"
+    else
+        # Install coreutils for gtimeout on macOS
+        if [ "$IS_MACOS" = true ] && command -v brew >/dev/null 2>&1; then
+            echo "    Installing coreutils for timeout functionality..."
+            brew install coreutils >/dev/null 2>&1 || true
+            TIMEOUT_CMD="gtimeout 120"
+        fi
+    fi
+    
+    if [ -n "$TIMEOUT_CMD" ] && $TIMEOUT_CMD ./ollama-proxy/start-host-vllm.sh; then
+        echo "  ✅ vLLM started successfully on host"
+        nohup ./ollama-proxy/watch-vllm-container.sh >/dev/null 2>&1 &
+        VLLM_STARTUP_SUCCESS=true
+    elif [ -z "$TIMEOUT_CMD" ]; then
+        # Fallback: run without timeout but with background monitoring
+        echo "    No timeout command available - running vLLM startup with monitoring..."
+        ./ollama-proxy/start-host-vllm.sh &
+        VLLM_PID=$!
+        
+        # Monitor for up to 120 seconds
+        for i in {1..120}; do
+            if ! kill -0 $VLLM_PID 2>/dev/null; then
+                # Process finished
+                wait $VLLM_PID
+                if [ $? -eq 0 ]; then
+                    echo "  ✅ vLLM started successfully on host"
+                    nohup ./ollama-proxy/watch-vllm-container.sh >/dev/null 2>&1 &
+                    VLLM_STARTUP_SUCCESS=true
+                    break
+                else
+                    echo "  ⚠️  vLLM startup failed"
+                    break
+                fi
+            fi
+            sleep 1
+        done
+        
+        # If still running after timeout, consider it failed
+        if kill -0 $VLLM_PID 2>/dev/null; then
+            echo "  ⚠️  vLLM startup timed out after 2 minutes"
+            kill $VLLM_PID 2>/dev/null || true
+        fi
+    else
+        echo "  ⚠️  vLLM startup failed or timed out after 2 minutes"
+        echo "  📝 This is common on Apple Silicon - continuing with setup..."
+        echo "  💡 Alternative: You can use Ollama instead of vLLM for this system"
+        
+        # Stop any partially started processes
+        pkill -f "vllm.entrypoints.openai.api_server" 2>/dev/null || true
+        
+        # Create a simple fallback message for the proxy
+        echo "  Creating fallback proxy configuration..."
+        
+        # Still create the nginx proxy but it will show an informative error
+        cat > ollama-proxy/nginx/nginx.conf << 'NGINX_FALLBACK_CONF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    server {
+        listen 11434;
+        
+        location / {
+            add_header Content-Type text/plain;
+            return 503 "vLLM service unavailable on this system. Please check logs or consider using Ollama instead.";
+        }
+        
+        location /health {
+            add_header Content-Type application/json;
+            return 503 '{"status":"unavailable","message":"vLLM not running on this system"}';
+        }
+    }
+}
+NGINX_FALLBACK_CONF
+        
+        VLLM_STARTUP_SUCCESS=false
+    fi
 
     # 8. Update docker-compose.yml: add lightweight proxy and remove heavy Ollama containers
     DC_FILE="docker-compose.yml"
@@ -1311,6 +1428,10 @@ VLLM_AMD_DOCKERFILE
     echo "     → Service name 'ollama' maintained for DNS compatibility"
     echo "     → vLLM will auto-download HuggingFace models: $VLLM_MODEL"
     echo "     → OpenAI-compatible API served on port 11434"
+    
+    # For Docker-based vLLM, we'll assume success until proven otherwise
+    # The actual validation will happen when Docker services start
+    VLLM_STARTUP_SUCCESS=true
 fi
 
 # Compute profile already detected at the beginning of the script
@@ -1916,11 +2037,29 @@ echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"
 echo "   🌐 n8n web session established for proper workflow activation"
 echo "   📝 If you experience 500 errors, workflows may need manual activation via web UI"
+echo ""
+echo "🤖 AI Model Service Status:"
+if [ "${VLLM_STARTUP_SUCCESS:-false}" = "true" ]; then
+    echo "   ✅ vLLM service configured and ready"
+    echo "   🔗 Model API: http://${ACCESS_HOST}:11434"
+    echo "   📋 Main model: $VLLM_MODEL"
+    echo "   📋 Embedding model: $EMBEDDING_MODEL"
+else
+    echo "   ⚠️  vLLM service not available"
+    echo "   💡 Alternative: Install and use Ollama for better compatibility"
+    echo "   📝 Command: brew install ollama && ollama serve"
+    echo "   🔗 Service endpoint: http://${ACCESS_HOST}:11434 (returns service status)"
+fi
 if [ "$IS_MACOS" = true ]; then
     echo ""
     echo "🍎 macOS Compatibility:"
     echo "   ✅ Storage service configured to disable extended attributes (xattrs)"
     echo "   ✅ File system compatibility mode enabled for macOS"
+    if [ "${VLLM_STARTUP_SUCCESS:-false}" = "true" ]; then
+        echo "   ✅ Native vLLM running on host system"
+    else
+        echo "   ⚠️  Native vLLM not available (using fallback proxy)"
+    fi
 fi
 echo ""
 echo -e "${GREEN}============================================================${NC}"
