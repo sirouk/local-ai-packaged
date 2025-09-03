@@ -2578,7 +2578,24 @@ echo "🔗 SOTA_PLANS.md - Future integration roadmap for InsightsLM → SOTA RA
 echo "📂 $BACKUP_DIR/ - Backup of previous state"
 echo ""
 
-if [ "$USE_EXTERNAL_APIS" = true ]; then
+if [ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ]; then
+    echo -e "${YELLOW}⚠️  NEXT STEPS FOR HYBRID MODE (EXTERNAL + LOCAL):${NC}"
+    echo "1. Edit .env file and add your external API keys:"
+    echo "   - OPENAI_API_KEY"
+    echo "   - MISTRAL_API_KEY"
+    echo "   - COHERE_API_KEY"
+    echo "   - ZEP_API_KEY"
+    echo ""
+    echo "2. Local models automatically configured:"
+    echo "   - Main model: $MAIN_MODEL"
+    echo "   - Embedding model: $EMBEDDING_MODEL"
+    echo ""
+    echo "3. Choose which APIs to use in workflows (both available)"
+    echo "4. Restart services: python3 start_services.py --profile $PROFILE --environment private"
+    echo "5. Access n8n at http://${ACCESS_HOST}:5678 to configure workflow API preferences"
+    echo ""
+    echo -e "${BLUE}📖 Hybrid mode gives maximum flexibility - use external APIs for speed, local for privacy${NC}"
+elif [ "$USE_EXTERNAL_APIS" = true ]; then
     echo -e "${YELLOW}⚠️  NEXT STEPS FOR EXTERNAL API MODE:${NC}"
     echo "1. Edit .env file using api-keys-template.env as reference"
     echo "2. Add your actual API keys (OpenAI, Mistral, Cohere, Zep)"
@@ -2644,7 +2661,7 @@ echo ""
 echo -e "${BLUE}🔧 Credential Mapping: All SOTA RAG workflows use correct credential IDs${NC}"
 echo -e "${BLUE}   Following easy_setup_v2.sh pattern: import credentials → update workflows → re-import${NC}"
 echo ""
-if [ "$USE_EXTERNAL_APIS" = false ]; then
+if [ "$USE_LOCAL_APIS" = true ] && [ "$USE_EXTERNAL_APIS" = false ]; then
     if [ "$IS_MACOS" = true ]; then
         echo -e "${BLUE}🍎 macOS Ollama Configuration:${NC}"
         echo -e "${BLUE}   Native Ollama on host (0.0.0.0:11434) + Docker nginx proxy${NC}"

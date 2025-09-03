@@ -320,9 +320,15 @@ Choose your starting point based on current deployment:
 - ✅ Three deployment options available via `easy_deploy.sh`:
   1. **InsightsLM Legacy** - Original system only (Option 1)
   2. **SOTA RAG 2.1** - Advanced system only (Option 2) 
-  3. **Both Systems** - Dual independent deployment (Option 3)
+  3. **Both Systems** - Dual independent deployment (Option 3, default)
+- ✅ Three API configuration modes for SOTA RAG:
+  - **A. External APIs** - OpenAI, Mistral, Cohere, Zep for maximum features
+  - **B. Local-Only** - Ollama + local alternatives for privacy
+  - **C. Hybrid (Both)** - Local + External APIs for maximum flexibility (default)
 - ✅ Automatic repository management: clones missing repos, updates existing ones
 - ✅ Smart validation: ensures required files exist for selected deployment mode
+- ✅ Automatic Ollama startup for macOS with proper Docker integration
+- ✅ Web API workflow activation for proper webhook registration
 - ✅ Separate credentials and workflows for each system
 - ✅ Independent database schemas when both deployed
 - ✅ All original functionality preserved

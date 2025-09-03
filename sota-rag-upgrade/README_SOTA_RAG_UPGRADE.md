@@ -76,9 +76,9 @@ python3 frontend-compatibility-bridge.py
 **Advanced RAG system with cutting-edge features**
 - Hybrid search, contextual embeddings, GraphRAG, multimodal
 - 1536-dimensional vector embeddings
-- Choose External APIs (fast setup) or Local-Only (privacy focused)
-- **Time**: ~1 hour (External) / ~1 week (Local alternatives)
-- **Cost**: API fees (External) / Hardware only (Local)
+- Choose: External APIs only | Local-Only | Hybrid (Both) - default
+- **Time**: ~1 hour (External/Hybrid) / ~1 week (Local alternatives)
+- **Cost**: API fees (External/Hybrid) / Hardware only (Local)
 - **Upgrade Path**: Add InsightsLM interface later via Option 3
 
 ### 3. 🎯 Both Systems (Default)
@@ -155,7 +155,7 @@ python3 frontend-compatibility-bridge.py
    - **Option 1**: InsightsLM Legacy only (fastest, original functionality)
    - **Option 2**: SOTA RAG 2.1 only (advanced features, no notebook UI)
    - **Option 3**: Both Systems (recommended - get everything with upgrade path)
-3. **Configure features** - For SOTA RAG: choose external APIs vs local models
+3. **Configure features** - For SOTA RAG: choose External APIs | Local-Only | Hybrid (Both) [default]
 4. **Test your deployment**:
    - **InsightsLM**: Access `http://localhost:3010` (if deployed)
    - **SOTA RAG**: Access `http://localhost:5678` (if deployed)
