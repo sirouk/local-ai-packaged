@@ -500,29 +500,50 @@ fi
 echo ""
 echo -e "${YELLOW}Model Configuration:${NC}"
 
-# Set defaults based on deployment mode and API selection
+# Configure models based on deployment mode and API selection
 if [ "$DEPLOYMENT_MODE" = "1" ]; then
     # InsightsLM Legacy - always uses local models
-    DEFAULT_MAIN_MODEL="qwen3:8b-q4_K_M"
-    DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
-    echo -e "InsightsLM Legacy mode - using local Ollama models"
+    echo -e "InsightsLM Legacy mode - configuring local Ollama models"
+    read -p "Enter main model (press Enter for default: qwen3:8b-q4_K_M): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-qwen3:8b-q4_K_M}
+    read -p "Enter embedding model (press Enter for default: nomic-embed-text): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+elif [ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ]; then
+    # Hybrid mode - configure both external and local models
+    echo -e "Hybrid mode - configuring both external and local models"
+    
+    echo ""
+    echo -e "${YELLOW}External API Models (for SOTA RAG advanced features):${NC}"
+    read -p "Enter external main model (press Enter for default: gpt-4o): " -r EXTERNAL_MAIN_MODEL
+    EXTERNAL_MAIN_MODEL=${EXTERNAL_MAIN_MODEL:-gpt-4o}
+    read -p "Enter external embedding model (press Enter for default: text-embedding-3-small): " -r EXTERNAL_EMBEDDING_MODEL
+    EXTERNAL_EMBEDDING_MODEL=${EXTERNAL_EMBEDDING_MODEL:-text-embedding-3-small}
+    
+    echo ""
+    echo -e "${YELLOW}Local Models (for InsightsLM and local SOTA RAG):${NC}"
+    read -p "Enter local main model (press Enter for default: qwen3:8b-q4_K_M): " -r LOCAL_MAIN_MODEL
+    LOCAL_MAIN_MODEL=${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}
+    read -p "Enter local embedding model (press Enter for default: nomic-embed-text): " -r LOCAL_EMBEDDING_MODEL
+    LOCAL_EMBEDDING_MODEL=${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+    
+    # Set primary models (external for SOTA RAG, local for InsightsLM)
+    MAIN_MODEL=$EXTERNAL_MAIN_MODEL
+    EMBEDDING_MODEL=$EXTERNAL_EMBEDDING_MODEL
 elif [ "$USE_EXTERNAL_APIS" = true ]; then
-    # SOTA RAG with external APIs
-    DEFAULT_MAIN_MODEL="gpt-4o"
-    DEFAULT_EMBEDDING_MODEL="text-embedding-3-small"
-    echo -e "External API mode - using OpenAI models"
+    # External APIs only
+    echo -e "External API mode - configuring OpenAI models"
+    read -p "Enter main model (press Enter for default: gpt-4o): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-gpt-4o}
+    read -p "Enter embedding model (press Enter for default: text-embedding-3-small): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
 else
-    # SOTA RAG local-only or Both systems local-only
-    DEFAULT_MAIN_MODEL="qwen3:8b-q4_K_M"
-    DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
-    echo -e "Local mode - using Ollama models"
+    # Local-only mode
+    echo -e "Local mode - configuring Ollama models"
+    read -p "Enter main model (press Enter for default: qwen3:8b-q4_K_M): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-qwen3:8b-q4_K_M}
+    read -p "Enter embedding model (press Enter for default: nomic-embed-text): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
 fi
-
-read -p "Enter main model (press Enter for default: $DEFAULT_MAIN_MODEL): " -r MAIN_MODEL
-MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_MAIN_MODEL}
-
-read -p "Enter embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
-EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
 
 # 3. SOTA RAG Feature Configuration (only if deploying SOTA RAG)
 if [ "$DEPLOY_SOTA_RAG" = true ]; then
@@ -669,8 +690,13 @@ echo "ENABLE_LONGTERM_MEMORY=$([[ "$ENABLE_LONGTERM_MEMORY" =~ ^[Yy]$ ]] && echo
 if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
     echo "" >> .env
     echo "# Ollama Model Configuration" >> .env
-    echo "OLLAMA_MODEL=$MAIN_MODEL" >> .env
-    echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
+    if [ -n "$LOCAL_MAIN_MODEL" ]; then
+        echo "OLLAMA_MODEL=$LOCAL_MAIN_MODEL" >> .env
+        echo "EMBEDDING_MODEL=$LOCAL_EMBEDDING_MODEL" >> .env
+    else
+        echo "OLLAMA_MODEL=$MAIN_MODEL" >> .env
+        echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
+    fi
 fi
 
 # Write API Keys to .env based on configuration
@@ -695,8 +721,13 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
     echo "" >> .env
     echo "# Local API Configuration" >> .env
     echo "LOCAL_OLLAMA_ENABLED=true" >> .env
-    echo "LOCAL_EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
-    echo "LOCAL_MAIN_MODEL=$MAIN_MODEL" >> .env
+    if [ -n "$LOCAL_MAIN_MODEL" ]; then
+        echo "LOCAL_EMBEDDING_MODEL=$LOCAL_EMBEDDING_MODEL" >> .env
+        echo "LOCAL_MAIN_MODEL=$LOCAL_MAIN_MODEL" >> .env
+    else
+        echo "LOCAL_EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
+        echo "LOCAL_MAIN_MODEL=$MAIN_MODEL" >> .env
+    fi
 fi
 
 echo -e "${GREEN}✓ Environment configuration created${NC}"
@@ -1162,7 +1193,8 @@ NGINX_CONF
         echo "  Configuring Ollama to pull selected models..."
         OLLAMA_COMMAND="echo 'Waiting for Ollama to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $MAIN_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $EMBEDDING_MODEL"
         yq eval ".[\"x-init-ollama\"].command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
-        echo "  Updated x-init-ollama to pull: $MAIN_MODEL and $EMBEDDING_MODEL"
+        OLLAMA_MODELS_TO_PULL="${LOCAL_MAIN_MODEL:-$MAIN_MODEL} ${LOCAL_EMBEDDING_MODEL:-$EMBEDDING_MODEL}"
+        echo "  Updated x-init-ollama to pull: $OLLAMA_MODELS_TO_PULL"
     fi
     
     echo -e "${GREEN}✓ Ollama configuration prepared for local model deployment${NC}"
@@ -1693,8 +1725,13 @@ API Mode: $([ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ] && e
 Systems Deployed: $([ "$DEPLOY_INSIGHTSLM" = true ] && echo -n "InsightsLM ") $([ "$DEPLOY_SOTA_RAG" = true ] && echo -n "SOTA-RAG")
 
 Models:
-- Main: $MAIN_MODEL  
-- Embedding: $EMBEDDING_MODEL
+$([ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ] && echo "External Models:
+- Main: $EXTERNAL_MAIN_MODEL  
+- Embedding: $EXTERNAL_EMBEDDING_MODEL
+Local Models:
+- Main: $LOCAL_MAIN_MODEL
+- Embedding: $LOCAL_EMBEDDING_MODEL" || echo "- Main: $MAIN_MODEL  
+- Embedding: $EMBEDDING_MODEL")
 
 $([ "$DEPLOY_SOTA_RAG" = true ] && echo "
 SOTA RAG Features Enabled:
@@ -2587,8 +2624,8 @@ if [ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ]; then
     echo "   - ZEP_API_KEY"
     echo ""
     echo "2. Local models automatically configured:"
-    echo "   - Main model: $MAIN_MODEL"
-    echo "   - Embedding model: $EMBEDDING_MODEL"
+    echo "   - Main model: ${LOCAL_MAIN_MODEL:-$MAIN_MODEL}"
+    echo "   - Embedding model: ${LOCAL_EMBEDDING_MODEL:-$EMBEDDING_MODEL}"
     echo ""
     echo "3. Choose which APIs to use in workflows (both available)"
     echo "4. Restart services: python3 start_services.py --profile $PROFILE --environment private"
