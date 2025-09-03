@@ -174,10 +174,13 @@ if [ -f .env ]; then
     echo "  Found existing .env file - reusing credentials where available"
 fi
 
-# Generate unified credentials (following easy_setup_v2.sh pattern)
+# Generate unified credentials (following easy_setup_v2.sh pattern exactly)
 UNIFIED_EMAIL="admin@local.host"
+
+# Generate new password for fresh install (following easy_setup_v2.sh pattern exactly)
+echo "  Generating unified password"
 DASHBOARD_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
-UNIFIED_PASSWORD="${DASHBOARD_PASSWORD}"
+UNIFIED_PASSWORD=$DASHBOARD_PASSWORD
 
 # Generate or reuse required secrets  
 N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-$(openssl rand -hex 16)}"
@@ -586,7 +589,7 @@ cp_sed "s/N8N_USER_MANAGEMENT_JWT_SECRET=.*/N8N_USER_MANAGEMENT_JWT_SECRET=$N8N_
 cp_sed "s/POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$POSTGRES_PASSWORD/" .env
 cp_sed "s/JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET/" .env
 cp_sed "s/DASHBOARD_USERNAME=.*/DASHBOARD_USERNAME=$UNIFIED_EMAIL/" .env
-cp_sed "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$UNIFIED_PASSWORD/" .env
+cp_sed "s/DASHBOARD_PASSWORD=.*/DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD/" .env
 cp_sed "s/CLICKHOUSE_PASSWORD=.*/CLICKHOUSE_PASSWORD=$CLICKHOUSE_PASSWORD/" .env
 cp_sed "s/MINIO_ROOT_PASSWORD=.*/MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD/" .env
 cp_sed "s/LANGFUSE_SALT=.*/LANGFUSE_SALT=$LANGFUSE_SALT/" .env
@@ -669,6 +672,15 @@ else
 fi
 
 echo -e "${GREEN}✓ Environment configuration created${NC}"
+
+# Force rebuild InsightsLM with fresh credentials (following easy_setup_v2.sh pattern)
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${YELLOW}Pre-building InsightsLM with fresh credentials...${NC}"
+    echo "  This ensures the VITE_SUPABASE_URL and ANON_KEY are properly embedded in the build"
+    docker compose -p localai build --no-cache insightslm || {
+        echo -e "${YELLOW}  Note: InsightsLM will be built when services start${NC}"
+    }
+fi
 
 # =============================================================================
 # HARDWARE DETECTION AND DEPENDENCY CHECKING
