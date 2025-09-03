@@ -1,6 +1,5 @@
 include:
   - ./supabase/docker/docker-compose.yml
-
 volumes:
   n8n_storage:
   ollama_storage:
@@ -14,12 +13,13 @@ volumes:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:
   langfuse_minio_data:
-
+  whisper_cache:
+  lightrag_data:
 x-n8n: &service-n8n
   image: n8nio/n8n:latest
   environment:
     - DB_TYPE=postgresdb
-    - DB_POSTGRESDB_HOST=db
+    - DB_POSTGRESDB_HOST=supabase-db
     - DB_POSTGRESDB_USER=postgres
     - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
     - DB_POSTGRESDB_DATABASE=postgres
@@ -28,7 +28,8 @@ x-n8n: &service-n8n
     - N8N_ENCRYPTION_KEY
     - N8N_USER_MANAGEMENT_JWT_SECRET
     - WEBHOOK_URL=${N8N_HOSTNAME:+https://}${N8N_HOSTNAME:-http://localhost:5678}
-
+    - N8N_SECURE_COOKIE=false
+    - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
 x-ollama: &service-ollama
   image: ollama/ollama:latest
   container_name: ollama
@@ -42,7 +43,6 @@ x-ollama: &service-ollama
     - OLLAMA_MAX_LOADED_MODELS=2
   volumes:
     - ollama_storage:/root/.ollama
-
 x-init-ollama: &init-ollama
   image: ollama/ollama:latest
   container_name: ollama-pull-llama
@@ -51,8 +51,7 @@ x-init-ollama: &init-ollama
   entrypoint: /bin/sh
   command:
     - "-c"
-    - "sleep 3; OLLAMA_HOST=ollama:11434 ollama pull qwen2.5:7b-instruct-q4_K_M; OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"
-
+    - "echo 'Waiting for Ollama proxy to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama proxy ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull qwen3:8b-q4_K_M; OLLAMA_HOST=ollama:11434 ollama pull nomic-embed-text"
 services:
   flowise:
     image: flowiseai/flowise
@@ -61,15 +60,14 @@ services:
     expose:
       - 3001/tcp
     environment:
-        - PORT=3001
-        - FLOWISE_USERNAME=${FLOWISE_USERNAME}
-        - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}
+      - PORT=3001
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-        - ~/.flowise:/root/.flowise
+      - ~/.flowise:/root/.flowise
     entrypoint: /bin/sh -c "sleep 3; flowise start"
-
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
@@ -80,9 +78,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - open-webui:/app/backend/data
-
   n8n-import:
-    <<: *service-n8n
+    !!merge <<: *service-n8n
     container_name: n8n-import
     entrypoint: /bin/sh
     command:
@@ -90,9 +87,8 @@ services:
       - "n8n import:credentials --separate --input=/backup/credentials && n8n import:workflow --separate --input=/backup/workflows"
     volumes:
       - ./n8n/backup:/backup
-
   n8n:
-    <<: *service-n8n
+    !!merge <<: *service-n8n
     container_name: n8n
     restart: unless-stopped
     expose:
@@ -104,7 +100,6 @@ services:
     depends_on:
       n8n-import:
         condition: service_completed_successfully
-
   qdrant:
     image: qdrant/qdrant
     container_name: qdrant
@@ -114,22 +109,20 @@ services:
       - 6334/tcp
     volumes:
       - qdrant_storage:/qdrant/storage
-
   neo4j:
     image: neo4j:latest
     volumes:
-        - ./neo4j/logs:/logs
-        - ./neo4j/config:/config
-        - ./neo4j/data:/data
-        - ./neo4j/plugins:/plugins
+      - ./neo4j/logs:/logs
+      - ./neo4j/config:/config
+      - ./neo4j/data:/data
+      - ./neo4j/plugins:/plugins
     expose:
       - 7473/tcp
       - 7474/tcp
       - 7687/tcp
     environment:
-        - NEO4J_AUTH=${NEO4J_AUTH:-"neo4j/your_password"}
+      - NEO4J_AUTH=${NEO4J_AUTH:-"neo4j/your_password"}
     restart: always
-
   caddy:
     container_name: caddy
     image: docker.io/library/caddy:2-alpine
@@ -156,6 +149,7 @@ services:
       - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-":8006"}
       - LANGFUSE_HOSTNAME=${LANGFUSE_HOSTNAME:-":8007"}
       - NEO4J_HOSTNAME=${NEO4J_HOSTNAME:-":8008"}
+      - LIGHTRAG_HOSTNAME=${LIGHTRAG_HOSTNAME:-":8009"}
       - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-internal}
     cap_drop:
       - ALL
@@ -166,7 +160,6 @@ services:
       options:
         max-size: "1m"
         max-file: "1"
-
   langfuse-worker:
     image: langfuse/langfuse-worker:3
     restart: always
@@ -180,7 +173,7 @@ services:
       clickhouse:
         condition: service_healthy
     expose:
-     - 3030/tcp
+      - 3030/tcp
     environment: &langfuse-worker-env
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
       SALT: ${LANGFUSE_SALT}
@@ -224,7 +217,6 @@ services:
       REDIS_TLS_CA: ${REDIS_TLS_CA:-/certs/ca.crt}
       REDIS_TLS_CERT: ${REDIS_TLS_CERT:-/certs/redis.crt}
       REDIS_TLS_KEY: ${REDIS_TLS_KEY:-/certs/redis.key}
-
   langfuse-web:
     image: langfuse/langfuse:3
     restart: always
@@ -232,7 +224,7 @@ services:
     expose:
       - 3000/tcp
     environment:
-      <<: *langfuse-worker-env
+      !!merge <<: *langfuse-worker-env
       NEXTAUTH_URL: http://localhost:3002
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
@@ -244,7 +236,6 @@ services:
       LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
       LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
       LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
-
   clickhouse:
     image: clickhouse/clickhouse-server
     restart: always
@@ -266,7 +257,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 1s
-
   minio:
     image: minio/minio
     restart: always
@@ -287,7 +277,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 1s
-
   postgres:
     image: postgres:${POSTGRES_VERSION:-latest}
     restart: unless-stopped
@@ -304,7 +293,6 @@ services:
       POSTGRES_DB: postgres
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
-
   redis:
     container_name: redis
     image: docker.io/valkey/valkey:8-alpine
@@ -330,7 +318,6 @@ services:
       interval: 3s
       timeout: 10s
       retries: 10
-
   searxng:
     container_name: searxng
     image: docker.io/searxng/searxng:latest
@@ -354,45 +341,88 @@ services:
       options:
         max-size: "1m"
         max-file: "1"
-
-  ollama-cpu:
-    profiles: ["cpu"]
-    <<: *service-ollama
-
-  ollama-gpu:
-    profiles: ["gpu-nvidia"]
-    <<: *service-ollama
+  insightslm:
+    build:
+      context: ./insights-lm-local-package
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${API_EXTERNAL_URL}
+        VITE_SUPABASE_ANON_KEY: ${ANON_KEY}
+        CACHE_BUST: "1756836565"
+        ENABLE_LIGHTRAG: ${ENABLE_LIGHTRAG}
+        ENABLE_MULTIMODAL: ${ENABLE_MULTIMODAL}
+        ENABLE_CONTEXTUAL: ${ENABLE_CONTEXTUAL}
+      cache_from: []
+    container_name: insightslm
+    ports:
+      - 3010:80
+    restart: unless-stopped
+  coqui-tts:
+    image: ghcr.io/coqui-ai/tts
+    container_name: coqui-tts
+    restart: unless-stopped
+    ports:
+      - 5002
+    entrypoint: ["python3", "TTS/server/server.py"]
+    command: [--model_name, tts_models/en/vctk/vits, --use_cuda, "false"]
     deploy:
       resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  ollama-gpu-amd:
-    profiles: ["gpu-amd"]
-    <<: *service-ollama
-    image: ollama/ollama:rocm
-    devices:
-      - "/dev/kfd"
-      - "/dev/dri"
-
-  ollama-pull-llama-cpu:
-    profiles: ["cpu"]
-    <<: *init-ollama
-    depends_on:
-      - ollama-cpu
-
-  ollama-pull-llama-gpu:
-    profiles: ["gpu-nvidia"]
-    <<: *init-ollama
-    depends_on:
-      - ollama-gpu
-
-  ollama-pull-llama-gpu-amd:
-    profiles: [gpu-amd]
-    <<: *init-ollama
-    image: ollama/ollama:rocm
-    depends_on:
-     - ollama-gpu-amd
+        reservations: {}
+    platform: linux/amd64
+    environment:
+      - USE_NNPACK=0
+  whisper-asr:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: whisper-asr
+    restart: unless-stopped
+    ports:
+      - "9002:9000"
+    environment:
+      - ASR_MODEL=${WHISPER_MODEL:-base} # Options: tiny, base, small, medium, large
+      - ASR_ENGINE=${WHISPER_ENGINE:-openai_whisper} # Options: openai_whisper, faster_whisper
+      - ASR_MODEL_PATH=/data/whisper
+    volumes:
+      - whisper_cache:/data/whisper # Persist model cache to avoid redownloading
+    deploy:
+      resources:
+        reservations: {}
+  ollama:
+    image: nginx:alpine
+    container_name: ollama
+    restart: unless-stopped
+    expose:
+      - 11434/tcp
+    volumes:
+      - ./ollama-proxy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test:
+        - CMD
+        - nginx
+        - -t
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - cpu
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: lightrag
+    restart: unless-stopped
+    expose:
+      - 8020/tcp
+    volumes:
+      - lightrag_data:/app/data
+    environment:
+      - LIGHTRAG_WORKING_DIR=/app/data
+      - LIGHTRAG_HOST=0.0.0.0
+      - LIGHTRAG_PORT=8020
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LIGHTRAG_LLM_MODEL=gpt-4o-mini
+      - LIGHTRAG_EMBEDDING_MODEL=text-embedding-3-small
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

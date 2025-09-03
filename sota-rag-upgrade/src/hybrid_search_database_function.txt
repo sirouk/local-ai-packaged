@@ -1,0 +1,210 @@
+-- Function returns component scores/ranks in addition to the final RRF score
+create or replace function hybrid_search_v2_with_details (
+  query_embedding vector(1536),
+  query_text text,
+  match_count int default 10,
+  filter jsonb default '{}',
+  rrf_k int default 50
+) returns table (
+  id bigint,
+  content text,
+  metadata jsonb,
+  vector_score float,  -- Cosine Similarity (1 = identical)
+  keyword_score float, -- TS_RANK score (higher = better keyword match)
+  vector_rank bigint,  -- Rank from vector search (NULL if not found)
+  keyword_rank bigint, -- Rank from keyword search (NULL if not found)
+  final_score float    -- Combined RRF score
+)
+language plpgsql
+as $$
+DECLARE
+  filter_key text;
+  filter_op text;
+  filter_val_jsonb jsonb;
+  filter_val_text text;
+  where_clauses text := '';
+  base_query text;
+  list_items text;
+  is_numeric_list boolean;
+  -- New variables for handling $and/$or clauses
+  clause_parts text[] := '{}'::text[];
+  joiner text;
+  clauses_array jsonb;
+  clause_object jsonb;
+BEGIN
+  -- Check for top-level $or or $and operators
+  IF filter ? '$or' OR filter ? '$and' THEN
+    -- Set the logical joiner and get the array of clauses
+    IF filter ? '$or' THEN
+      joiner := ' OR ';
+      clauses_array := filter->'$or';
+    ELSE -- Must be '$and'
+      joiner := ' AND ';
+      clauses_array := filter->'$and';
+    END IF;
+
+    IF jsonb_typeof(clauses_array) <> 'array' THEN
+      RAISE EXCEPTION 'Value for a top-level operator must be a JSON array.';
+    END IF;
+
+    -- Loop through each filter object in the array
+    FOR clause_object IN SELECT * FROM jsonb_array_elements(clauses_array)
+    LOOP
+      -- Get the field key from the object
+      SELECT key INTO filter_key FROM jsonb_object_keys(clause_object) AS t(key) LIMIT 1;
+      
+      IF filter_key IS NULL THEN
+        CONTINUE; -- Skip malformed, empty objects in the array
+      END IF;
+
+      -- Extract operator and value from the nested object
+      filter_op := (clause_object->filter_key->>'operator')::text;
+      filter_val_jsonb := clause_object->filter_key->'value';
+
+      -- === This block generates a single SQL clause ===
+      DECLARE
+        single_clause text;
+      BEGIN
+        IF filter_op IN ('IN', 'NOT IN') THEN
+          -- Logic for IN / NOT IN
+          IF jsonb_typeof(filter_val_jsonb) <> 'array' THEN RAISE EXCEPTION 'Value for operator % for key % must be an array.', filter_op, filter_key; END IF;
+          IF jsonb_array_length(filter_val_jsonb) = 0 THEN
+              single_clause := (CASE WHEN filter_op = 'IN' THEN 'false' ELSE 'true' END);
+          ELSE
+            is_numeric_list := (jsonb_typeof(filter_val_jsonb->0) = 'number');
+            IF is_numeric_list THEN
+              SELECT string_agg(elem::text, ', ') INTO list_items FROM jsonb_array_elements_text(filter_val_jsonb) AS t(elem);
+              single_clause := format('((metadata->>%L)::numeric %s (%s))', filter_key, filter_op, list_items);
+            ELSE
+              SELECT string_agg(quote_literal(elem), ', ') INTO list_items FROM jsonb_array_elements_text(filter_val_jsonb) AS t(elem);
+              single_clause := format('(metadata->>%L %s (%s))', filter_key, filter_op, list_items);
+            END IF;
+          END IF;
+        ELSE
+          -- Logic for other operators
+          filter_val_text := filter_val_jsonb #>> '{}';
+          BEGIN
+            -- Try to process as a timestamp. If it fails, the EXCEPTION block will run.
+            PERFORM filter_val_text::timestamp;
+            IF filter_op NOT IN ('=', '!=', '>', '<', '>=', '<=') THEN RAISE EXCEPTION 'Invalid operator % for date/timestamp field %', filter_op, filter_key; END IF;
+            single_clause := format('((metadata->>%L)::timestamp %s %L::timestamp)', filter_key, filter_op, filter_val_text);
+          EXCEPTION WHEN others THEN
+            -- Not a timestamp, so check if it's numeric or text.
+            IF filter_val_text ~ '^\d+(\.\d+)?$' THEN
+                IF filter_op NOT IN ('=', '!=', '>', '<', '>=', '<=') THEN RAISE EXCEPTION 'Invalid operator % for numeric field %', filter_op, filter_key; END IF;
+                single_clause := format('((metadata->>%L)::numeric %s %s)', filter_key, filter_op, filter_val_text);
+            ELSE
+                IF filter_op NOT IN ('=', '!=') THEN RAISE EXCEPTION 'Invalid operator % for text field %', filter_op, filter_key; END IF;
+                single_clause := format('(metadata->>%L %s %L)', filter_key, filter_op, filter_val_text);
+            END IF;
+          END;
+        END IF;
+        -- Add the completed clause to our array of clauses
+        clause_parts := array_append(clause_parts, single_clause);
+      END;
+    END LOOP;
+
+    -- Join the individual clauses with the correct operator
+    IF array_length(clause_parts, 1) > 0 THEN
+      where_clauses := array_to_string(clause_parts, joiner);
+    END IF;
+
+  ELSE
+    -- === FALLBACK: Original behavior for flat filter objects (implicit AND) ===
+    DECLARE
+      first_clause boolean := true;
+    BEGIN
+      FOR filter_key, filter_op, filter_val_jsonb IN
+        SELECT key, (value->>'operator')::text, value->'value' FROM jsonb_each(filter)
+      LOOP
+          IF NOT first_clause THEN where_clauses := where_clauses || ' AND '; ELSE first_clause := false; END IF;
+          
+          IF filter_op IN ('IN', 'NOT IN') THEN
+            IF jsonb_typeof(filter_val_jsonb) <> 'array' THEN RAISE EXCEPTION 'Value for operator % for key % must be an array.', filter_op, filter_key; END IF;
+            IF jsonb_array_length(filter_val_jsonb) = 0 THEN
+                where_clauses := where_clauses || (CASE WHEN filter_op = 'IN' THEN 'false' ELSE 'true' END);
+            ELSE
+              is_numeric_list := (jsonb_typeof(filter_val_jsonb->0) = 'number');
+              IF is_numeric_list THEN
+                SELECT string_agg(elem::text, ', ') INTO list_items FROM jsonb_array_elements_text(filter_val_jsonb) AS t(elem);
+                where_clauses := where_clauses || format('((metadata->>%L)::numeric %s (%s))', filter_key, filter_op, list_items);
+              ELSE
+                SELECT string_agg(quote_literal(elem), ', ') INTO list_items FROM jsonb_array_elements_text(filter_val_jsonb) AS t(elem);
+                where_clauses := where_clauses || format('(metadata->>%L %s (%s))', filter_key, filter_op, list_items);
+              END IF;
+            END IF;
+          ELSE
+            filter_val_text := filter_val_jsonb #>> '{}';
+            BEGIN
+              -- Try to process as a timestamp. If it fails, the EXCEPTION block will run.
+              PERFORM filter_val_text::timestamp;
+              IF filter_op NOT IN ('=', '!=', '>', '<', '>=', '<=') THEN RAISE EXCEPTION 'Invalid operator % for date/timestamp field %', filter_op, filter_key; END IF;
+              where_clauses := where_clauses || format('((metadata->>%L)::timestamp %s %L::timestamp)', filter_key, filter_op, filter_val_text);
+            EXCEPTION WHEN others THEN
+              -- Not a timestamp, so check if it's numeric or text.
+              IF filter_val_text ~ '^\d+(\.\d+)?$' THEN
+                  IF filter_op NOT IN ('=', '!=', '>', '<', '>=', '<=') THEN RAISE EXCEPTION 'Invalid operator % for numeric field %', filter_op, filter_key; END IF;
+                  where_clauses := where_clauses || format('((metadata->>%L)::numeric %s %s)', filter_key, filter_op, filter_val_text);
+              ELSE
+                  IF filter_op NOT IN ('=', '!=') THEN RAISE EXCEPTION 'Invalid operator % for text field %', filter_op, filter_key; END IF;
+                  where_clauses := where_clauses || format('(metadata->>%L %s %L)', filter_key, filter_op, filter_val_text);
+              END IF;
+            END;
+          END IF;
+      END LOOP;
+    END;
+  END IF;
+
+  -- Default to 'true' if no filters were applied
+  IF where_clauses = '' OR where_clauses IS NULL THEN
+    where_clauses := 'true';
+  END IF;
+
+  -- The base query remains unchanged
+  base_query := format($q$
+    WITH vector_search AS (
+      SELECT
+        dv2.id,
+        (1 - (dv2.embedding <=> %L::vector(1536)))::float AS similarity_score,
+        RANK() OVER (ORDER BY dv2.embedding <=> %L::vector(1536) ASC) AS rank
+      FROM documents_v2 dv2
+      WHERE %s
+      ORDER BY dv2.embedding <=> %L::vector(1536) ASC
+      LIMIT COALESCE(%s, 10) * 2
+    ),
+    keyword_search AS (
+      SELECT
+        dv2.id,
+        ts_rank(dv2.fts, websearch_to_tsquery('english', %L))::float AS keyword_score,
+        RANK() OVER (ORDER BY ts_rank(dv2.fts, websearch_to_tsquery('english', %L)) DESC) AS rank
+      FROM documents_v2 dv2
+      WHERE %s
+        AND dv2.fts @@ websearch_to_tsquery('english', %L)
+      ORDER BY keyword_score DESC
+      LIMIT COALESCE(%s, 10) * 2
+    )
+    SELECT
+      COALESCE(vector_search.id, keyword_search.id) AS id,
+      docs.content,
+      docs.metadata,
+      COALESCE(vector_search.similarity_score, 0.0)::float AS vector_score,
+      COALESCE(keyword_search.keyword_score, 0.0)::float AS keyword_score,
+      vector_search.rank AS vector_rank,
+      keyword_search.rank AS keyword_rank,
+      (
+        COALESCE(1.0 / (%s + vector_search.rank), 0.0) +
+        COALESCE(1.0 / (%s + keyword_search.rank), 0.0)
+      )::double precision AS final_score
+    FROM vector_search
+    FULL OUTER JOIN keyword_search ON vector_search.id = keyword_search.id
+    JOIN documents_v2 docs ON docs.id = COALESCE(vector_search.id, keyword_search.id)
+    ORDER BY final_score DESC
+    LIMIT %s
+  $q$,
+    query_embedding, query_embedding, ('(' || where_clauses || ')'), query_embedding, match_count,
+    query_text, query_text, ('(' || where_clauses || ')'), query_text, match_count,
+    rrf_k, rrf_k, match_count
+  );
+
+  RETURN QUERY EXECUTE base_query;
+END $$;

@@ -6,3 +6,8 @@ shared-backup/
 .env.test
 searxng/settings.yml
 searxng/uwsgi*
+.venv/
+.env.previous
+unified_credentials.txt
+__pycache__/
+**/__pycache__/

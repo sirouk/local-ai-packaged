@@ -1,0 +1,6394 @@
+{
+  "name": "TheAIAutomators.com - RAG SOTA - v2.1 BLUEPRINT",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2048,
+        896
+      ],
+      "id": "f4001ee3-247e-4a44-aeb4-e11d03e8f2d7",
+      "name": "When chat message received",
+      "webhookId": "1b5ef427-fd26-43ff-8b62-aa8c2a224551"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "gpt-5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -2160,
+        1152
+      ],
+      "id": "be72a367-5b8c-44a5-83ca-e2e33037033f",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3216,
+        -176
+      ],
+      "id": "3fe712ff-f820-40bb-ae17-c4fbc04aa05e",
+      "name": "Embeddings OpenAI1",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "doc_id",
+                "value": "={{ $('Set Data').first().json.doc_id }}"
+              },
+              {
+                "name": "doc_name",
+                "value": "={{ $('Set Data').first().json.doc_name }}"
+              },
+              {
+                "name": "file_summary",
+                "value": "={{ $('Enrich').item.json.output.document_summary }}"
+              },
+              {
+                "name": "doc_type",
+                "value": "={{ $('Set Data').first().json.doc_type }}"
+              },
+              {
+                "name": "department",
+                "value": "={{ $('Enrich').item.json.output.department }}"
+              },
+              {
+                "name": "document_date",
+                "value": "={{ $('Enrich').item.json.output.document_date }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        3328,
+        -176
+      ],
+      "id": "7df0705d-58d2-4bb7-bdeb-4b9850961f14",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 100000,
+        "chunkOverlap": 10,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        -16
+      ],
+      "id": "5268b5d4-4c82-4488-bb91-c4f4846b5157",
+      "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "documents_v2",
+          "mode": "list",
+          "cachedResultName": "documents_v2"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.1,
+      "position": [
+        3264,
+        -416
+      ],
+      "id": "421aa0f8-8d54-48b2-b341-c0601946b606",
+      "name": "Supabase Vector Store1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "type": "SHA256",
+        "value": "={{ $json.text }}",
+        "dataPropertyName": "hash"
+      },
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        -3216,
+        -176
+      ],
+      "id": "1caf7449-640a-463f-97b3-318a5fa4bf0a",
+      "name": "Generate Hash"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        -3232
+      ],
+      "id": "4816de8a-b576-4c89-9722-4f60c2723752",
+      "name": "Download File",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "record_manager_v2",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "doc_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Set Data').item.json.doc_id }}"
+            },
+            {
+              "keyName": "hash",
+              "condition": "eq",
+              "keyValue": "={{ $json.hash }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2976,
+        -176
+      ],
+      "id": "3ef569b1-d5d2-479f-9a54-de524cd25bb2",
+      "name": "Search Record Manager",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "record_manager_v2",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "doc_id",
+              "fieldValue": "={{ $('Set Data').item.json.doc_id }}"
+            },
+            {
+              "fieldId": "hash",
+              "fieldValue": "={{ $('Generate Hash').item.json.hash }}"
+            },
+            {
+              "fieldId": "graph_id",
+              "fieldValue": "={{ $json.foundDocumentId }}"
+            },
+            {
+              "fieldId": "data_type",
+              "fieldValue": "={{ $('Set Text (Merged)').item.json.data_type }}"
+            },
+            {
+              "fieldId": "schema",
+              "fieldValue": "={{ $('Set Text (Merged)').item.json.array_keys || null }}"
+            },
+            {
+              "fieldId": "document_title",
+              "fieldValue": "={{ $('New Files').item.json.name }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2112,
+        -288
+      ],
+      "id": "8b918dce-aed2-45fd-9517-79226329a1ad",
+      "name": "Create Row in Record Manager",
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -3296,
+        -3632
+      ],
+      "id": "b7f92247-4734-42c6-b274-49813d99a42f",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "documents_v2",
+        "filterType": "string",
+        "filterString": "=metadata->>doc_id=like.*{{ $('Loop Over Items').item.json.id }}*"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2384,
+        0
+      ],
+      "id": "7cd26f78-b4ed-4a49-bd25-96b8462fdf88",
+      "name": "Delete Previous Vectors",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "record_manager_v2",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Search Record Manager').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "hash",
+              "fieldValue": "={{ $('Generate Hash').item.json.hash }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1808,
+        0
+      ],
+      "id": "6e1b93c8-6971-447a-9c6c-56f68b7961bb",
+      "name": "Update our Record Manager",
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -2128,
+        0
+      ],
+      "id": "70509e34-35ca-44bf-a86c-6e1f8b5e80d0",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a27d8259-8ed2-4638-8716-b60119b8f90c",
+              "name": "text",
+              "value": "={{ $json.content || $json.text || $json.markdown}}",
+              "type": "string"
+            },
+            {
+              "id": "57ffce94-6b26-426f-9891-cd436002bf6d",
+              "name": "data_type",
+              "value": "unstructured",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3504,
+        -3312
+      ],
+      "id": "5ca59edd-ae0a-4a77-bbcb-e6e844b2fbeb",
+      "name": "Set Text"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "90016f21-d4be-4e57-a81a-5fe290f388b9",
+              "name": "content",
+              "value": "={{ $('Set Text (Merged)').item.json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        544,
+        -304
+      ],
+      "id": "74dcb58c-7e6d-4415-a2c5-5332c8b7f7e3",
+      "name": "Set up Text for Embedding"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "destinationKey": "content",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        608,
+        -3264
+      ],
+      "id": "f9e7e11f-bf5e-4822-a22c-c339893609c7",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mistral.ai/v1/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mistralCloudApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "purpose",
+              "value": "ocr"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        -3568
+      ],
+      "id": "05c3e9dc-985d-46a0-93cc-7376fe450b97",
+      "name": "Upload File",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "7261818a729133d0",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mistral.ai/v1/files/{{ $json.id }}/url",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mistralCloudApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "expiry",
+              "value": "24"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        -3568
+      ],
+      "id": "8bd35830-6564-4467-a999-0cc9a3261fe3",
+      "name": "HTTP Request",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "7261818a729133d0",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mistral.ai/v1/ocr",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mistralCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"mistral-ocr-latest\",\n  \"document\": {\n    \"type\": \"document_url\",\n    \"document_url\": \"{{ $json.url }}\"\n  },\n  \"include_image_base64\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1648,
+        -3568
+      ],
+      "id": "1219751e-e27e-44ef-935b-5b6cc6ad8eda",
+      "name": "HTTP Request1",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "7261818a729133d0",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5aadca7f-8f88-417f-b80e-a14bb79f6990",
+              "name": "content",
+              "value": "={{ $json.pages.map(p => p.markdown).join('\\n\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1920,
+        -3568
+      ],
+      "id": "466939e8-0e58-4c4a-9c65-b959b3d87838",
+      "name": "Aggregate Markdown"
+    },
+    {
+      "parameters": {
+        "content": "## Record Manager Router\n\n### 0. New Document\nAdd to Record Manager and Vector Store \n\n### 1. No Change to Doc\nMove to next file\n\n### 2. Changed Document \nDelete old vectors and add new ones",
+        "height": 820,
+        "width": 1660,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3264,
+        -544
+      ],
+      "id": "13a3f8ae-338a-480f-9865-9ba38a58c597",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1S_Q-4SYtpAS_vBNwDxRsgaKs0Y6e9pT2",
+          "mode": "list",
+          "cachedResultName": "RAG files",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1S_Q-4SYtpAS_vBNwDxRsgaKs0Y6e9pT2"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3728,
+        -3632
+      ],
+      "id": "9979ffa9-ed44-47eb-91c1-136dfc14f04a",
+      "name": "New Files",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1S_Q-4SYtpAS_vBNwDxRsgaKs0Y6e9pT2",
+          "mode": "list",
+          "cachedResultName": "RAG files",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1S_Q-4SYtpAS_vBNwDxRsgaKs0Y6e9pT2"
+        },
+        "event": "fileUpdated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3728,
+        -3392
+      ],
+      "id": "1a43800f-5ec1-4e04-9a68-866792b1f877",
+      "name": "Updated Files",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "1_-AetOrJGBQdIfoFZMReL-grPUhMawK3",
+          "mode": "list",
+          "cachedResultName": "Recycle bin",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1_-AetOrJGBQdIfoFZMReL-grPUhMawK3"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        -3712,
+        -4736
+      ],
+      "id": "fa6160cc-d033-4bea-b102-39539a479f72",
+      "name": "Delete Files",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -3488,
+        -4736
+      ],
+      "id": "12139996-6a61-4272-b55b-a2f6de7bf62f",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "documents_v2",
+        "filterType": "string",
+        "filterString": "=metadata->>file_id=like.*{{ $('Loop Over Items1').item.json.id }}*"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2752,
+        -4832
+      ],
+      "id": "543d2100-ada0-4cfc-8db3-5511e2889692",
+      "name": "Delete Previous Vectors1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -2528,
+        -4832
+      ],
+      "id": "68789309-f488-4baf-8a62-3e06cbb371e5",
+      "name": "Aggregate1"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "record_manager_v2",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "doc_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Loop Over Items1').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -3248,
+        -4640
+      ],
+      "id": "df2a8fe6-b7cc-4862-850b-d968b03ee6cb",
+      "name": "Search Record Manager1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0a6b6fa5-854b-495a-85c0-7361f3e32f6d",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3056,
+        -4640
+      ],
+      "id": "ab45ee8e-5ea6-42b9-bc69-67bf88f27a74",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "record_manager_v2",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Search Record Manager1').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2320,
+        -4832
+      ],
+      "id": "9d34d0da-6faa-4000-a3cd-2236ec424a68",
+      "name": "Delete Record from Record Manager",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## RAG File Deletion\nAny files in the Recycling Bin sub-folder will be deleted from the vector store and sub-folder",
+        "height": 180,
+        "width": 280,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -4096,
+        -4752
+      ],
+      "id": "8d7a61a5-661f-46e9-b864-08adc5d8b358",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## RAG File Creation & Update",
+        "height": 180,
+        "width": 280,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -4096,
+        -3632
+      ],
+      "id": "685529c7-37c4-41b8-b1d6-ddb991ae442d",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v1/crawl",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"url\": \"https://www.fia.com/\",\n  \"limit\": 20,\n  \"webhook\": {\n    \"url\": \"<ENTER WEBHOOK>\",\n    \"events\": [\n      \"page\"\n    ]\n  },\n  \"scrapeOptions\": {\n    \"formats\": [\n      \"markdown\"\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3488,
+        -5168
+      ],
+      "id": "e67fa04d-1821-43d2-9422-1a85e51ae24d",
+      "name": "Trigger Firecrawl",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "f6f64a139a13060a",
+          "name": "Tims Fal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "593f8249-18b5-4488-9515-f1f89e84512c",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3728,
+        -3872
+      ],
+      "id": "61f574ea-fb69-4747-bc1d-43203b6f84d9",
+      "name": "Webhook",
+      "webhookId": "593f8249-18b5-4488-9515-f1f89e84512c"
+    },
+    {
+      "parameters": {
+        "content": "## Webscraping Creation & Update",
+        "height": 180,
+        "width": 280,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -4096,
+        -3920
+      ],
+      "id": "3891750f-8e7d-4181-b2e4-20df640e8c90",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4f60ed7e-4284-4360-bca2-4513859e7dde",
+              "leftValue": "={{ $('Webhook').isExecuted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2672,
+        -3536
+      ],
+      "id": "8a549130-9a21-4435-bda9-c7817c97a02c",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  \nitem.json.encoded_message = Buffer.from($('Loop Over Items').first().json.body.data[0].markdown).toString('base64');\n  \n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2288,
+        -3792
+      ],
+      "id": "fcaf594d-8d5c-4431-8a41-8a79c6b454cf",
+      "name": "Base64 the Markdown"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "encoded_message",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1968,
+        -3792
+      ],
+      "id": "e5de6c80-79ca-45c2-8278-112f0ac1bf71",
+      "name": "Convert to Binary"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d0f85312-1655-44ed-ab5d-4db71c7b3f03",
+              "name": "lightrag_enabled",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "31b25dec-c322-4862-85cd-1746156618fd",
+              "name": "multimodal_rag_enabled",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "6e9b9a47-9dc9-4912-8833-c934ec3e5d89",
+              "name": "contextual_embedding_enabled",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "be837843-d308-4b1a-88f1-a6b20cc66029",
+              "name": "send_tabular_data_to_vector_store",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "fdba4635-3d3a-46fe-84f2-a0797cc5d81d",
+              "name": "llamaparse_max_polling_attempts",
+              "value": 200,
+              "type": "number"
+            },
+            {
+              "id": "39bd7383-0385-459d-85d4-126bc25347ca",
+              "name": "doc_id",
+              "value": "={{ $json.id || $json.body.data[0].metadata.url }}",
+              "type": "string"
+            },
+            {
+              "id": "eabda515-4cc4-49c9-9299-88aa34071946",
+              "name": "doc_name",
+              "value": "={{ $json.name || $json.body.data[0].metadata.title }}",
+              "type": "string"
+            },
+            {
+              "id": "464bcef6-ec45-44fd-aa9e-49bd3ecf6bf6",
+              "name": "doc_type",
+              "value": "={{ $('Webhook').isExecuted ? \"webpage\" : \"file\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -3008,
+        -3536
+      ],
+      "id": "5f4db4ec-787f-46ed-9d6d-151ef2901f4d",
+      "name": "Set Data"
+    },
+    {
+      "parameters": {
+        "content": "## Trigger Webscraping",
+        "height": 180,
+        "width": 280,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -4096,
+        -5216
+      ],
+      "id": "506c6ed7-321e-464b-8663-46a8bf1a3656",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4db8114c-c34f-4bc6-8c9e-78d7388e9b56",
+              "leftValue": "={{ $json.body.data[0].markdown.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -3520,
+        -3872
+      ],
+      "id": "995d7fe3-1f9c-49ae-aa42-5b0dfb9333d7",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2d3a9569-f099-4136-84d0-6987e691d58b",
+              "leftValue": "={{ $('Set Data').item.json.doc_type }}",
+              "rightValue": "file",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3856,
+        320
+      ],
+      "id": "d4411519-563c-437e-9323-cebcf93183ae",
+      "name": "If File"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Set Data').first().json.doc_id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "12aJDffBW8W219B9cv6zF1Nupj-Ieb00J",
+          "mode": "list",
+          "cachedResultName": "Processed",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/12aJDffBW8W219B9cv6zF1Nupj-Ieb00J"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        4112,
+        432
+      ],
+      "id": "7efc8334-55ca-4adf-b6c5-6a2eaf03d386",
+      "name": "Archive File",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        240,
+        -3568
+      ],
+      "id": "3fd0f106-c7a7-4557-9077-11c19a4c23a8",
+      "name": "Download File1",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "months",
+              "monthsInterval": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -3712,
+        -5168
+      ],
+      "id": "a807876e-5cbc-4584-ace7-4b60f21ef9ed",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "content": "# State-of-the-Art RAG Agent",
+        "height": 600,
+        "width": 1388,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2400,
+        752
+      ],
+      "id": "034f606e-ab4d-44b9-8538-100bca89d0ff",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "name": "Query_Vector_Store",
+        "description": "Call this to query data from our vector store knowledgebase",
+        "workflowId": {
+          "__rl": true,
+          "value": "A4BVrX5qYlJ7HUMI",
+          "mode": "list",
+          "cachedResultName": "TheAIAutomators.com - RAG Masterclass - Lesson 9 - STOA - v2.0 Dev 0.3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('query', ``, 'string') }}",
+            "session_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('session_id', ``, 'string') }}",
+            "type": "vector"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        -1504,
+        1152
+      ],
+      "id": "f0a65d32-5032-4cd0-80c7-8ecfa6ef9cdf",
+      "name": "Query Vector Store"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "query"
+            },
+            {
+              "name": "type"
+            },
+            {
+              "name": "session_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -3200,
+        1504
+      ],
+      "id": "ecdb0262-9e99-46ba-960b-28ec63a950bc",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $('When Executed by Another Workflow').item.json.query }}"
+            },
+            {
+              "name": "model",
+              "value": "text-embedding-3-small"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1472,
+        1488
+      ],
+      "id": "42b0aaaf-a80c-4f41-95ff-48012cfa1ce0",
+      "name": "Generate Embedding From Query",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kong:8000/functions/v1/hybrid-search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n        \"query_text\": \"{{ $('When Executed by Another Workflow').item.json.query }}\",\n        \"query_embedding\": [{{ $json.data[0].embedding }}],\n        \"match_count\": 30,\n        \"filter\": {{ JSON.stringify($('Prep Metadata1').item.json.output.filter) }}\n      }",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1232,
+        1488
+      ],
+      "id": "c6889d56-dc1d-454d-a8b0-c1aac7100b40",
+      "name": "Trigger Hybrid Search",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "lwhXEwGGqPjAvgcU",
+          "name": "Supabase AW Header Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cohere.com/v2/rerank",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"rerank-v3.5\",\n  \"query\": \"{{ $('When Executed by Another Workflow').first().json.query }}\",\n  \"top_n\": 10,\n  \"documents\": {{ JSON.stringify($json.documents) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -464,
+        1488
+      ],
+      "id": "f07faff4-1296-42a0-b947-21826aab65e1",
+      "name": "Rerank with Cohere 3.5",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "f6f64a139a13060a",
+          "name": "Cohere"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- This Code Node extracts 'content' from multiple input items ---\n\n// Step 1: Use .map() to iterate over ALL incoming items ($input.all()).\n// For each item, access its 'json' property, and then the 'content' field within that.\nconst contentArray = $input.all().map(item => {\n  // Basic safety check: ensure item.json and item.json.content exist.\n  // Return null or an empty string if not found, otherwise return the content.\n  // Adjust the fallback value (null) if needed.\n  return item.json?.content ?? null;\n});\n\n// Step 2: Filter out any potential null values if an item was missing content (optional)\n// If you are certain all items will have content, you can skip this filter.\nconst validContentArray = contentArray.filter(content => content !== null);\n\n// Step 3: Return the result as a *single* new n8n item.\n// This item contains your final array of strings under the 'documents' key.\nreturn [{\n  json: {\n    // Use validContentArray if you filtered, otherwise use contentArray\n    documents: validContentArray\n    // documents: contentArray // <-- Use this if you didn't filter\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        1488
+      ],
+      "id": "7c113360-af0d-4767-9a9d-986128f51349",
+      "name": "Create Array"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Code Node to Reorder Items Based on Rerank Results ---\n\n// --- Step 1: Get Data from Input Nodes ---\n// Using the input lines confirmed by the user as correct for their workflow.\n\n// Get the data array to be reordered from the 'Setup Array' node.\n// This could be an array of objects OR an array of strings.\nconst originalDataItems = $('Create Array').first().json.documents;\n\n// Get the rerank results array from the primary input node's first item.\n// (Assumed to be the Cohere Rerank node output).\nconst rerankOrderInfo = $input.first().json.results;\n\n// --- Step 2: Validate Inputs (Basic Checks) ---\n// Validate that we actually got arrays to work with.\nif (!Array.isArray(originalDataItems)) {\n  throw new Error(\"Data retrieved from $('Setup Array').first().json.documents is not an array. Check the 'Setup Array' node output.\");\n}\nif (!Array.isArray(rerankOrderInfo) || rerankOrderInfo.length === 0) {\n  // Allow rerankOrderInfo to be empty if originalDataItems is also empty\n  if (originalDataItems.length !== 0) {\n      throw new Error(\"Could not get valid rerank results from the input node ($input.first()), but original data exists. Check the node providing rerank data.\");\n  }\n  // If both are empty, allow it to proceed and return empty.\n}\n\n\n// --- Step 3: Create the New Array in the Reranked Order ---\n// Handle the case where inputs might be empty.\nlet sortedData = [];\nif (rerankOrderInfo && rerankOrderInfo.length > 0 && originalDataItems && originalDataItems.length > 0) {\n    // Iterate through the rerankOrderInfo array. Each element tells us\n    // the index of the item we want from the originalDataItems array.\n    sortedData = rerankOrderInfo.map(rankInfo => {\n      const originalIndex = rankInfo.index;\n\n      // Check if the index is valid for the originalDataItems array\n      if (originalIndex !== undefined && originalIndex !== null && originalIndex >= 0 && originalIndex < originalDataItems.length) {\n        // Retrieve the corresponding original data item (object or string)\n        return originalDataItems[originalIndex];\n      } else {\n        // Log error for invalid index found in rerank results\n        console.error(`Error: Rerank result index ${originalIndex} is invalid or out of bounds for original data (length ${originalDataItems.length}). Skipping this index.`);\n        return null; // Return null for invalid indices\n      }\n    }).filter(item => item !== null); // Remove any nulls caused by invalid indices\n} else {\n    // If inputs were empty or invalid, ensure sortedData is an empty array\n    sortedData = [];\n    console.log(\"Input data (original or rerank info) is empty or invalid, resulting in empty sorted output.\");\n}\n\n\n// --- Step 4: Return the Sorted Data as a Single Item Containing the Array ---\n// This format returns ONE n8n item. The item's json property contains\n// an object with a key 'sortedDocuments' which holds the array.\n// This structure works correctly whether sortedData contains objects or strings.\nreturn [{\n  json: {\n    sortedDocuments: sortedData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        1488
+      ],
+      "id": "57b13cea-0cec-4c61-b153-4740993e096e",
+      "name": "Return Reordered Items1"
+    },
+    {
+      "parameters": {
+        "content": "## Hybrid Search",
+        "height": 520,
+        "width": 520,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1568,
+        1376
+      ],
+      "id": "eac2c29d-9d33-4495-8f44-8a01e063cae4",
+      "name": "Sticky Note11"
+    },
+    {
+      "parameters": {
+        "content": "## Reranking",
+        "height": 520,
+        "width": 980,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1024,
+        1376
+      ],
+      "id": "5d112e8b-ffa3-4fbb-87a4-ba4385e55289",
+      "name": "Sticky Note12"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $input.first().json.content;\nconst chunkSize = 1000;\nconst chunkOverlap = 0;\nconst overlapBoundary = 'word'; // 'word' or 'sentence'\n\n// Prioritize splitting by Markdown headings, then paragraphs, then lines.\nconst separators = [\n    \"\\n# \", // H1\n    \"\\n## \", // H2\n    \"\\n### \", // H3\n    \"\\n#### \", // H4\n    \"\\n##### \", // H5\n    \"\\n###### \", // H6\n    \"\\n\\n\", // Paragraph\n    \"\\n\",   // Line\n    \" \",    // Word\n    \"\"      // Character\n];\n\n/**\n * Adjusts the overlap text so it starts at a word or sentence boundary.\n *\n * @param {string} prevChunk - The previous chunk of text.\n * @param {number} overlap - The desired minimum number of characters to overlap.\n * @param {string} type - 'word' or 'sentence'.\n * @returns {string} The adjusted overlap text.\n */\nfunction getOverlapBoundary(prevChunk, overlap, type) {\n    let candidateStart = prevChunk.length - overlap;\n    if (candidateStart < 0) candidateStart = 0;\n\n    if (type === 'sentence') {\n        const substring = prevChunk.slice(candidateStart);\n        const sentenceRegex = /[.!?]\\s*/g;\n        let lastIndex = -1;\n        let match;\n        \n        while ((match = sentenceRegex.exec(substring)) !== null) {\n            lastIndex = match.index + match[0].length;\n        }\n\n        if (lastIndex !== -1 && lastIndex < substring.length) {\n            return prevChunk.slice(candidateStart + lastIndex);\n        }\n    }\n\n    // Fallback for 'word' boundary or if no sentence terminator is found.\n    while (candidateStart > 0 && !/\\s/.test(prevChunk[candidateStart - 1])) {\n        candidateStart--;\n    }\n    return prevChunk.slice(candidateStart);\n}\n\n/**\n * Recursively splits the text into chunks of a maximum length, applying overlap.\n * It prioritizes splitting based on the order of separators provided.\n *\n * @param {string} text - The text to split.\n * @param {number} chunkSize - The maximum length of each chunk.\n * @param {number} overlap - The number of characters to overlap between chunks.\n * @param {string[]} seps - Array of separators to use for splitting.\n * @returns {string[]} An array of text chunks.\n */\nfunction recursiveSplit(text, chunkSize, overlap, seps) {\n    const finalChunks = [];\n    let currentChunk = \"\";\n\n    // Start with the highest-priority separator\n    const separator = seps[0];\n    const remainingSeps = seps.slice(1);\n\n    // Split by the current separator\n    const splits = text.split(separator);\n\n    for (let i = 0; i < splits.length; i++) {\n        const part = splits[i];\n        \n        // Add the separator back to the part (except for the first part)\n        const partWithSeparator = (i > 0) ? separator + part : part;\n\n        // If the part fits in the current chunk, add it\n        if (currentChunk.length + partWithSeparator.length <= chunkSize) {\n            currentChunk += partWithSeparator;\n        } else {\n            // If the current chunk has content, push it to the results\n            if (currentChunk.length > 0) {\n                finalChunks.push(currentChunk);\n            }\n\n            // If the new part itself is too large, split it further recursively\n            if (partWithSeparator.length > chunkSize) {\n                // Remove the separator for the recursive call if it was added\n                const partToSplit = (i > 0) ? part : partWithSeparator;\n                const subChunks = recursiveSplit(partToSplit, chunkSize, overlap, remainingSeps);\n                finalChunks.push(...subChunks);\n                currentChunk = \"\"; // Reset current chunk\n            } else {\n                currentChunk = partWithSeparator;\n            }\n        }\n    }\n    \n    // Add the last remaining chunk\n    if (currentChunk.length > 0) {\n        finalChunks.push(currentChunk);\n    }\n    \n    // If we have successfully split the text, apply overlap and return\n    if (finalChunks.length > 1) {\n        const overlappedChunks = finalChunks.map((chunk, i) => {\n            if (i > 0 && overlap > 0) {\n                const prevChunk = finalChunks[i - 1];\n                const overlapText = getOverlapBoundary(prevChunk, overlap, overlapBoundary);\n                return overlapText + chunk;\n            }\n            return chunk;\n        });\n        return overlappedChunks;\n    }\n\n    // If no splitting occurred with the current separator, try the next one\n    if (remainingSeps.length > 0) {\n        return recursiveSplit(text, chunkSize, overlap, remainingSeps);\n    }\n\n    // If no separators can split the text (e.g., text is smaller than chunkSize), return as a single chunk\n    return [text];\n}\n\nreturn recursiveSplit(text, chunkSize, chunkOverlap, separators)\n  .map(chunk => ({ json: { chunk } }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -304
+      ],
+      "id": "8b65d7f2-e6c8-46d5-976a-577dd9d87151",
+      "name": "Chunking"
+    },
+    {
+      "parameters": {
+        "batchSize": 50,
+        "options": {
+          "reset": "={{ $node['Loop over Chunks'].context.done }}"
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1408,
+        -384
+      ],
+      "id": "11b5bcaa-a572-4a4f-ab72-d5c454eb31c3",
+      "name": "Loop over Chunks"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-NANO"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=<document> \n{{ $('Set up Text for Embedding').item.json.content }} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{{ $json.chunk }}\n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else. "
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2256,
+        -512
+      ],
+      "id": "7f3b1f29-eaa4-4444-948a-0b386eda9a28",
+      "name": "Generate Chunk Description",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5,
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2571a1ec-f6fc-46d6-9361-fc121eacbc99",
+              "name": "content",
+              "value": "={{ $json.chunk }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3056,
+        -416
+      ],
+      "id": "92da5eca-759a-4c82-97b1-169313ba0992",
+      "name": "Setup Chunk for Embedding"
+    },
+    {
+      "parameters": {
+        "content": "[![The AI Automators](https://www.theaiautomators.com/wp-content/uploads/2025/03/gray-logo.png)](https://www.theaiautomators.com/)",
+        "height": 140,
+        "width": 300,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -4096,
+        -5488
+      ],
+      "id": "9a60e10d-2ee7-4a69-9e38-68f32ffb9296",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "71326cd6-1316-4b5e-bf34-0d0b3c086005",
+              "leftValue": "={{ $('Trigger Hybrid Search').item.json.keys().length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -976,
+        1488
+      ],
+      "id": "71cd06f8-c3b3-44f4-b818-97fe1f685c0d",
+      "name": "If3",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  message: \"no documents found\" \n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        1712
+      ],
+      "id": "f9528051-c16f-43bc-b248-0f377a86834d",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "dcd400bc-0b91-4c30-81bd-da402e4a2730",
+                    "leftValue": "={{ $json.hash }}",
+                    "rightValue": "={{ $('Generate Hash').item.json.hash }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "empty",
+                      "singleValue": true
+                    },
+                    "id": "ad01f150-f021-454c-aa13-eea5b26c2cba"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ca0c7ef8-09f9-4424-947b-8469b1ed8cac",
+                    "leftValue": "={{ $json.hash }}",
+                    "rightValue": "={{ $('Generate Hash').item.json.hash }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -2800,
+        -176
+      ],
+      "id": "6723170c-30c6-4e8c-9ada-aebe66ecac3a",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2944,
+        320
+      ],
+      "id": "04464d5d-415b-4258-8243-54240500145e",
+      "name": "Aggregate2"
+    },
+    {
+      "parameters": {
+        "content": "## Knowledge Graph Updates",
+        "height": 392,
+        "width": 1412,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1568,
+        -992
+      ],
+      "id": "f6ed9c43-9163-4ad6-8dbc-627aa89e4399",
+      "name": "Sticky Note14"
+    },
+    {
+      "parameters": {
+        "content": "## Contextual Vector Embeddings",
+        "height": 804,
+        "width": 2436,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        112,
+        -544
+      ],
+      "id": "6054b983-b4ad-41f5-9f07-a6ea6e545715",
+      "name": "Sticky Note15"
+    },
+    {
+      "parameters": {
+        "content": "## File Format Router & Extraction",
+        "height": 2440,
+        "width": 4528,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1360,
+        -4208
+      ],
+      "id": "0e374f36-bf9f-41b5-b0f6-b3186e89a90b",
+      "name": "Sticky Note9"
+    },
+    {
+      "parameters": {
+        "name": "Query_Knowledge_Graph",
+        "description": "Call this to query data from our knowledge graph",
+        "workflowId": {
+          "__rl": true,
+          "value": "A4BVrX5qYlJ7HUMI",
+          "mode": "list",
+          "cachedResultName": "TheAIAutomators.com - RAG Masterclass - Lesson 9 - STOA - v2.0 Dev 0.3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('query', ``, 'string') }}",
+            "session_id": "=",
+            "type": "graph"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        -1328,
+        1152
+      ],
+      "id": "4fae90dc-80ce-4be3-829d-72cbb258c710",
+      "name": "Query Knowledge Graph",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "vector",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "322d7a20-e584-4a2c-ad39-987298dabdf1"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4c020ce0-c212-4e62-9c42-863f0358d065",
+                    "leftValue": "={{ $json.type }}",
+                    "rightValue": "graph",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -3040,
+        1504
+      ],
+      "id": "57e8e79c-3397-4e3a-9bd6-1dc2f5b2c178",
+      "name": "Switch2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://lightrag:8020/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $('When Executed by Another Workflow').item.json.query }}\",\n  \"mode\": \"hybrid\",\n  \"only_need_context\": true,\n  \"only_need_prompt\": false,\n  \"response_type\": \"multiple paragraphs\",\n  \"top_k\": 20,\n  \"chunk_top_k\": 1,\n  \"max_entity_tokens\": 10000,\n  \"max_relation_tokens\": 10000,\n  \"max_total_tokens\": 32000,\n  \"enable_rerank\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2224,
+        2032
+      ],
+      "id": "69d7d926-79e7-4fc3-b0e5-a17eb069ddae",
+      "name": "Query Graph",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "f6f64a139a13060a",
+          "name": "LightRAG on Render 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and extract everything before \"-----Document Chunks(DC)-----\"\nfor (const item of $input.all()) {\n\n  const intro = \"The following entities and relationships were retrived.\\n\\n\"\n  const outro = \"-----How to use this data-----\\n\\nWhen considering relationships with timestamps:\\n\\nEach relationship has a \\\"created_at\\\" timestamp indicating when we acquired this knowledge. When encountering conflicting relationships, consider both the semantic content and the timestamp. Don't automatically prefer the most recently created relationships - use judgment based on the context. For time-specific queries, prioritize temporal information in the content before considering creation timestamps\"\n  \n  // Get the input string - adjust this based on where your string is located\n  const inputString = item.json.response; // Change 'response' to your actual field name\n  \n  // Define the substring to search for\n  const separator = \"-----Document Chunks(DC)-----\";\n  \n  // Find the position of the separator\n  const separatorIndex = inputString.indexOf(separator);\n  \n  let extractedContent = \"\";\n  \n  if (separatorIndex !== -1) {\n    // Extract everything before the separator\n    extractedContent = inputString.substring(0, separatorIndex);\n  } else {\n    // If separator not found, return the entire string\n    extractedContent = inputString;\n  }\n  \n  // Add the extracted content to the item\n  item.json.response = intro + extractedContent + outro;\n\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1984,
+        2032
+      ],
+      "id": "076fb005-4d95-4b3f-9e37-9d23c0b5a020",
+      "name": "Tidy up response"
+    },
+    {
+      "parameters": {
+        "content": "## Graph Search",
+        "height": 300,
+        "width": 800,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2384,
+        1904
+      ],
+      "id": "d1e255ea-8e5d-49a4-82a8-e89cfcc2ade1",
+      "name": "Sticky Note13"
+    },
+    {
+      "parameters": {
+        "content": "## Advanced Metadata Filtering",
+        "height": 520,
+        "width": 800,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2384,
+        1376
+      ],
+      "id": "6bec52b3-78df-4071-bfd7-994842de399d",
+      "name": "Sticky Note16"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"Generic Object with String or Number Values\",\n  \"type\": \"object\",\n  \"additionalProperties\": {\n    \"type\": [\"string\", \"number\"]\n  }\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -96,
+        -16
+      ],
+      "id": "f1bbff6b-e56e-411e-9c66-70b1ee04c102",
+      "name": "Structured Output Parser2"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "options": {
+          "responseFormat": "json_object"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -256,
+        0
+      ],
+      "id": "96f825f7-4ea7-4693-b82d-74edbbafd0b9",
+      "name": "OpenAI Chat Model3",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Document & Metadata Enrichment",
+        "height": 820,
+        "width": 1616
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        -544
+      ],
+      "id": "f4348105-7a0c-42e1-9cd8-321dc9ca55b9",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "metadata_fields"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -224
+      ],
+      "id": "6719687d-c6bb-4da5-8c80-d35e63e46b66",
+      "name": "Fetch Metadata Fields",
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get input items\nconst items = $input.all();\n\n// Initialize output string and list of fields\nlet output = '';\nlet fieldList = '';\n\n// Loop through each input item\nfor (const item of items) {\n  const data = item.json;\n\n  const key = data.metadata_name;\n  const values = data.allowed_values;\n\n  output += `## ${key}\\n`;\n  output += `The filter key ${key} can have the following possible values\\n\\n`;\n  output += `${values.trim()}\\n\\n`;\n\n  fieldList += `\"${key}\":\"<ADD>\",\\n`;\n}\n\n// Remove trailing comma and newline from fieldList\nfieldList = fieldList.trim().replace(/,\\s*$/, '');\n\n// Take the first item and modify it with aggregated data\nconst firstItem = items[0];\nfirstItem.json.filterPromptInstructions = output.trim();\nfirstItem.json.list_of_fields = fieldList;\n\n// Return only the first item (now containing aggregated data)\nreturn [firstItem];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        -224
+      ],
+      "id": "d9c41731-75c4-4fbe-b46f-84d8f198641a",
+      "name": "Prep"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# File Name\n{{ $('Set Data').item.json.doc_name }}\n\n##################\n\n# File Contents\n{{ \n$('Set Text (Merged)').first().json.text.split(/\\s+/).length > 500 \n    ? $('Set Text (Merged)').first().json.text.split(/\\s+/).slice(0, 500).join(' ') + '...' \n    : $('Set Text (Merged)').first().json.text \n}}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=Based on the provided file name and file contents, extract out a 1 sentence description of what the document is about and classify the document according to the below fields.\n\nOnly output JSON in the following format\n\n{\n\"document_summary\":\"<ADD>\",\n{{ $json.list_of_fields }}\n}\n\nIf you are unsure of any of these, just output N/A in the field.\n\n{{ $json.filterPromptInstructions }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        -224,
+        -224
+      ],
+      "id": "165d2cc0-16d9-4ae4-90b3-640994606b4c",
+      "name": "Enrich",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "options": {
+          "groupMessages": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryManager",
+      "typeVersion": 1.1,
+      "position": [
+        -2688,
+        1488
+      ],
+      "id": "3778188a-ccb8-4ac6-9e69-3eea0fc160e0",
+      "name": "Chat Memory Manager",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1"
+        },
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -1872,
+        1696
+      ],
+      "id": "acf18092-088a-44b6-92cd-595cc7c84317",
+      "name": "OpenAI Chat Model4",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# User Query\n{{ $('When Executed by Another Workflow').first().json.query }}\n\n# Conversation History (if any)\n{{ JSON.stringify($('Chat Memory Manager').first().json) }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=# Task\n\nYour task is to consider the following user query and then consider the following metadata keys with example values that we have that we can limit our result set from.\n\n# Metadata Filters and Possible Values\n\n{{ $json.filterPromptInstructions }}\n\n# Metadata Operators\n\nThe following operators are allowed:\n\n>\n<\n=\n!=\n>=\n<=\nIN\nNOT IN\n\nIF IN or NOT IN are provided, then an array of values must be provided.\n\nNow output a filter array with relevant filters with the following example format. The below filter_categories are just for exampe purposes. Use the \"Metadata Filters and Possible Values\" list above for the list of allowed filters.\n\n[\n    \"filter\": {\n      \"$and\": [\n        {\n          \"category\": {\n            \"operator\": \"IN\",\n            \"value\": [\n              \"F1\",\n              \"Rally\"\n            ]\n          }\n        },\n        {\n          \"year\": {\n            \"operator\": \">\",\n            \"value\": 2024\n          }\n        }\n      ]\n    }\n]\n\nIf the query does not have relevant metadatafilters, then do not output any ... for example\n\n{\n  \"filter\": {}\n}\n\nIf there is only 1 relevant metadafilter, then just output that ... for example\n\n[\n    \"filter\": {\n      \"$and\": [\n        {\n          \"motorsport_category\": {\n            \"operator\": \"IN\",\n            \"value\": [\n              \"F1\",\n              \"Rally\"\n            ]\n          }\n        }\n      ]\n    }\n]\n\nOnly output in JSON"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.6,
+      "position": [
+        -1872,
+        1488
+      ],
+      "id": "6bfa62c3-9b1e-4e9c-9cbf-eb04035933b8",
+      "name": "Prep Metadata1",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"FlexibleFilterObject\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"filter\": {\n      \"type\": \"object\",\n      \"oneOf\": [\n        {\n          \"required\": [\"$and\"],\n          \"properties\": {\n            \"$and\": {\n              \"type\": \"array\",\n              \"items\": { \"$ref\": \"#/definitions/condition\" }\n            }\n          },\n          \"additionalProperties\": false\n        },\n        {\n          \"required\": [\"$or\"],\n          \"properties\": {\n            \"$or\": {\n              \"type\": \"array\",\n              \"items\": { \"$ref\": \"#/definitions/condition\" }\n            }\n          },\n          \"additionalProperties\": false\n        },\n        {\n          \"properties\": {},\n          \"additionalProperties\": false\n        }\n      ]\n    }\n  },\n  \"required\": [\"filter\"],\n  \"definitions\": {\n    \"condition\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"required\": [\"field\", \"operator\", \"value\"],\n          \"properties\": {\n            \"field\": { \"type\": \"string\" },\n            \"operator\": {\n              \"type\": \"string\",\n              \"enum\": [\"=\", \"!=\", \">\", \"<\", \">=\", \"<=\", \"IN\", \"NOT IN\"]\n            },\n            \"value\": {\n              \"oneOf\": [\n                { \"type\": \"string\" },\n                { \"type\": \"number\" },\n                {\n                  \"type\": \"array\",\n                  \"items\": { \"type\": [\"string\", \"number\"] }\n                }\n              ]\n            }\n          },\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"minProperties\": 1,\n          \"maxProperties\": 1,\n          \"patternProperties\": {\n            \"^.+$\": {\n              \"type\": \"object\",\n              \"required\": [\"operator\", \"value\"],\n              \"properties\": {\n                \"operator\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"=\", \"!=\", \">\", \"<\", \">=\", \"<=\", \"IN\", \"NOT IN\"]\n                },\n                \"value\": {\n                  \"oneOf\": [\n                    { \"type\": \"string\" },\n                    { \"type\": \"number\" },\n                    {\n                      \"type\": \"array\",\n                      \"items\": { \"type\": [\"string\", \"number\"] }\n                    }\n                  ]\n                }\n              },\n              \"additionalProperties\": false\n            }\n          },\n          \"additionalProperties\": false\n        }\n      ]\n    }\n  }\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -1712,
+        1696
+      ],
+      "id": "9e23be97-c525-4a1c-9328-ae20e761c160",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "content": "# Retrieval Sub-Workflow",
+        "height": 520,
+        "width": 840,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3248,
+        1376
+      ],
+      "id": "96f893ff-5e6b-459d-9b5c-95e62e160fe6",
+      "name": "Sticky Note17"
+    },
+    {
+      "parameters": {
+        "content": "[![The AI Automators](https://www.theaiautomators.com/wp-content/uploads/2025/03/gray-logo.png)](https://www.theaiautomators.com/)",
+        "height": 220,
+        "width": 580,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3104,
+        864
+      ],
+      "id": "7962b391-3c90-45f9-bd1c-90fd0d06ab22",
+      "name": "Sticky Note10"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "metadata_fields"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2304,
+        1488
+      ],
+      "id": "a1ffbd81-ea8a-4895-8478-44eed653aa64",
+      "name": "Fetch Metadata Fields1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get input items\nconst items = $input.all();\n\n// Initialize output string\nlet output = '';\n\n// Loop through each input item\nfor (const item of items) {\n  const data = item.json;\n\n  const key = data.metadata_name;\n  const values = data.allowed_values;\n\n  output += `## ${key}\\n`;\n  output += `The filter key ${key} can have the following possible values\\n\\n`;\n  output += `${values.trim()}\\n\\n`;\n}\n\n// Take the first item and modify it with aggregated data\nconst firstItem = items[0];\nfirstItem.json.filterPromptInstructions = output.trim();\n\n// Return only the first item (now containing aggregated data)\nreturn [firstItem];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2096,
+        1488
+      ],
+      "id": "aa059be7-06b9-4931-8771-f6ca10f803f7",
+      "name": "Prep1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('When chat message received').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "=---Role---\n\nYou are a helpful assistant responding to a user's query based on the information provided by the Vector and Graph tools and structured datasets.\n\n---Goal---\n\nYou are tasked with creating and executing a retrieval strategy to best answer the users question.\n\nThe output should be a well-reserached response to the users query based on the output from these tools and to follow the Response Rules set about below.\n\nYou must consider both the conversation history and the current query.\n\nIf the question involves tabular data\u2014such as calculating sums, averages, or finding maximum values\u2014the vector store and graph tools may be unreliable. In that case, start by reviewing the available datasets, identify the ones most likely to contain the answer, and then construct a SQL query to analyze them.\n\nYour goal is to provide an accurate answer based on the output from these tools ONLY.\n\n---Response Rules---\n\n- Ideal target format and length: Multiple Paragraphs\n- Use markdown formatting with appropriate section headings\n- Please respond in the same language as the user's question.\n- If there are images provided from the retrieved information, you should return this in markdown format.\n- Ensure the response maintains continuity with the conversation history.\n- List up to 5 most important reference sources at the end under \"References\" section. Clearly indicating whether each source is from, such as Vector Store (VS)\n- If you cannot answer the question using the provided information or if no information is returned from the tools, say \"Sorry I don't know\".\n- Do not make anything up. \n- Do not include information not provided by the Knowledge Bases.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        -1792,
+        896
+      ],
+      "id": "c82f6c98-8bc8-416c-80b1-12a186c13673",
+      "name": "Agentic RAG",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 600,
+        "width": 840,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3264,
+        752
+      ],
+      "id": "ad9ff778-9649-4189-9ffb-64f796cfe0d7",
+      "name": "Sticky Note18"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -2000,
+        1152
+      ],
+      "id": "540370bc-0d7e-4629-af65-884200c5a5f5",
+      "name": "Supabase Short-Term Memory",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('When Executed by Another Workflow').item.json.session_id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -2576,
+        1664
+      ],
+      "id": "32aa52a9-6313-439b-bbdb-4d553a54d86a",
+      "name": "Supabase Short-Term Memory1",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## TODO: Enable/Disable services here",
+        "height": 280,
+        "width": 280
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3088,
+        -3648
+      ],
+      "id": "fc447617-070d-4250-be70-7bf55d1942d8",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "### TODO: Add LightRAG Server URL",
+        "height": 220,
+        "width": 280
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2304,
+        1968
+      ],
+      "id": "444c8097-bd30-4e4d-9f51-ca8e5c4afc1b",
+      "name": "Sticky Note19"
+    },
+    {
+      "parameters": {
+        "content": "## v2.1 (2025-08-28)\nSetup instructions here:\nhttps://community.theaiautomators.com/c/automation-templates/state-of-the-art-n8n-rag-agent",
+        "height": 180,
+        "width": 580,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3104,
+        1136
+      ],
+      "id": "b2668720-dd4a-4b40-8641-89f92a5a53d1",
+      "name": "Sticky Note21"
+    },
+    {
+      "parameters": {
+        "operation": "deleteFile",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items1').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1712,
+        -4624
+      ],
+      "id": "38eca66d-8247-4739-afc7-29673728420e",
+      "name": "Delete a file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Set Data').item.json.lightrag_enabled }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "ff677730-3b6a-41af-b46e-69c0610d9ea2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "If LightRAG enabled"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ba8b00e1-09f7-4729-a3f2-1a0526e1b9f8",
+                    "leftValue": "1",
+                    "rightValue": "1",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Always execute"
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1008,
+        -336
+      ],
+      "id": "66649992-3dc1-4327-9da1-4d193d0e8a45",
+      "name": "Is LightRAG enabled?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Set Data').item.json.lightrag_enabled }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "ff677730-3b6a-41af-b46e-69c0610d9ea2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "If LightRAG enabled"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "918f53c3-a48f-4cf4-a005-2c3c6e43da39",
+                    "leftValue": "1",
+                    "rightValue": "1",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Always execute"
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -2080,
+        -784
+      ],
+      "id": "db247c80-c1fa-4e2b-b707-52a23e1686a5",
+      "name": "Is LightRAG enabled?1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4a63774b-98fb-4f42-af92-5bf4ff6017ca",
+              "leftValue": "={{ $('Set Data').item.json.multimodal_rag_enabled }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        -3840
+      ],
+      "id": "bc1b7151-d430-4441-91de-623281548d2b",
+      "name": "Is Multimodal enabled?"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{ $json.id }}"
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        912,
+        -4112
+      ],
+      "id": "c85a4f18-e95f-4f8e-8cb1-4a7cb4b20e84",
+      "name": "Get a document",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "bqI58vKXpk38ykBy",
+          "name": "Google Docs account LLTeam"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Note: Firecrawl.dev returns markdown by default. If your scraping service returns HTML then add a HTML to Markdown node here",
+        "height": 140
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        -3424
+      ],
+      "id": "7b43d5ac-11d1-4fac-a331-692c059611ee",
+      "name": "Sticky Note22"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {}
+      },
+      "id": "500b290f-1962-4e85-bdb5-77bdf18e4160",
+      "name": "Extract from Excel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -2256
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -2464
+      ],
+      "id": "9f57d1a6-11a5-42b0-9109-a5f1e8e15757",
+      "name": "Extract from CSV"
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "concatenate",
+              "field": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "35bbd31c-4231-4806-9751-1644f63d896e",
+      "name": "Summarize",
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1,
+      "position": [
+        1920,
+        -2336
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheets[0].properties.sheetId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        384,
+        -2048
+      ],
+      "id": "d16b0459-dbf1-4d4c-a2ea-c03147508f05",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Ov0u9BUnvPNePMaD",
+          "name": "Google Sheets account LogicLabsTeam"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "98ed8f1b-f706-4829-8010-cf33b8eaf1d2",
+              "name": "array_keys",
+              "value": "={{ $json.data.first().keys() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1920,
+        -2528
+      ],
+      "id": "337a72dd-e6bc-416b-862c-86dc3c87ebf0",
+      "name": "Array keys"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2528,
+        -2432
+      ],
+      "id": "939f19ab-6de0-4169-a0db-88259410634a",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a27d8259-8ed2-4638-8716-b60119b8f90c",
+              "name": "text",
+              "value": "={{ $json.concatenated_data }}",
+              "type": "string"
+            },
+            {
+              "id": "ccab898b-7018-41cf-9418-ccfca0509259",
+              "name": "array_keys",
+              "value": "={{ $json.array_keys }}",
+              "type": "string"
+            },
+            {
+              "id": "6b696d19-a500-46e4-92a6-4b0148ddb153",
+              "name": "data_type",
+              "value": "tabular",
+              "type": "string"
+            },
+            {
+              "id": "c91004d6-3bcc-4542-ad90-8eea6bd78707",
+              "name": "data_rows",
+              "value": "={{ $('Aggregate3').item.json.data }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3008,
+        -2432
+      ],
+      "id": "f36a0b3a-9222-4482-9a3a-32b5cb31d85d",
+      "name": "Set Text for Tabular Data"
+    },
+    {
+      "parameters": {
+        "url": "=https://sheets.googleapis.com/v4/spreadsheets/{{ $('Loop Over Items').item.json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -672,
+        -2336
+      ],
+      "id": "ca6fef46-951d-4b29-a488-e7e81ddd760c",
+      "name": "Get google sheet info",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "Ov0u9BUnvPNePMaD",
+          "name": "Google Sheets account LogicLabsTeam"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "include": "allFieldsExcept",
+        "fieldsToExclude": "row_number",
+        "options": {}
+      },
+      "id": "4f77327e-fdf0-4d29-9809-104c26b38c5b",
+      "name": "Aggregate3",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        -2416
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3776,
+        -1680
+      ],
+      "id": "a8fa8fc1-4191-4a6b-aca9-53fb02fb6e81",
+      "name": "No Operation, do nothing2"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/vnd.google-apps.document",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "9e010d7f-0552-4a06-9566-e3031ffae240"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Google Docs"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ddac5320-959a-4634-9000-c9cdc397d2e4",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PDF"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "b94191c9-1f29-4558-a4ac-3a74e9f5d88f",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "text/html",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "HTML"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "296bdf72-6d94-487b-9276-66bbee45c801",
+                    "leftValue": "={{ [\n  // Documents / Presentations / Spreadsheets\n  \"application/x-t602\",                          // 602\n  \"application/x-abiword\",                       // abw, zabw\n  \"image/cgm\",                                   // cgm\n  \"application/x-appleworks\",                    // cwk\n  \"application/msword\",                          // doc\n  \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\", // docx\n  \"application/vnd.ms-word.document.macroEnabled.12\", // docm\n  \"application/msword\",                          // dot\n  \"application/vnd.ms-word.template.macroEnabled.12\", // dotm\n  \"application/x-hwp\",                           // hwp\n  \"application/vnd.apple.keynote\",               // key\n  \"application/vnd.lotus-wordpro\",               // lwp\n  \"application/x-mw\",                            // mw\n  \"application/x-mcw\",                           // mcw\n  \"application/vnd.apple.pages\",                 // pages\n  \"application/vnd.powerbuilder6\",               // pbd\n  \"application/vnd.ms-powerpoint\",               // ppt\n  \"application/vnd.ms-powerpoint.presentation.macroEnabled.12\", // pptm\n  \"application/vnd.openxmlformats-officedocument.presentationml.presentation\", // pptx\n  \"application/vnd.ms-powerpoint\",               // pot\n  \"application/vnd.ms-powerpoint.template.macroEnabled.12\", // potm\n  \"application/vnd.openxmlformats-officedocument.presentationml.template\", // potx\n  \"application/rtf\",                             // rtf\n  \"application/vnd.stardivision.draw\",           // sda\n  \"application/vnd.stardivision.impress\",        // sdd\n  \"application/sdp\",                             // sdp\n  \"application/vnd.stardivision.writer\",         // sdw, sgl\n  \"application/vnd.sun.xml.impress.template\",    // sti\n  \"application/vnd.sun.xml.impress\",             // sxi\n  \"application/vnd.sun.xml.writer\",              // sxw\n  \"application/vnd.sun.xml.writer.template\",     // stw\n  \"application/vnd.sun.xml.writer.global\",       // sxg\n  \"text/plain\",                                  // txt\n  \"application/x-uof\",                           // uof\n  \"application/x-uop\",                           // uop\n  \"application/x-uot\",                           // uot\n  \"application/vnd.stardivision.writer\",         // vor\n  \"application/vnd.wordperfect\",                 // wpd\n  \"application/vnd.ms-works\",                    // wps\n  \"application/xml\",                             // xml\n  \"application/epub+zip\",                        // epub\n\n  // Images\n  \"image/jpeg\",                                  // jpg, jpeg\n  \"image/png\",                                   // png\n  \"image/gif\",                                   // gif\n  \"image/bmp\",                                   // bmp\n  \"image/svg+xml\",                               // svg\n  \"image/tiff\",                                  // tiff\n  \"image/webp\",                                  // webp\n\n  // Audio / Video\n  \"audio/mpeg\",                                  // mp3, mpga\n  \"video/mp4\",                                   // mp4\n  \"video/mpeg\",                                  // mpeg\n  \"audio/mp4\",                                   // m4a\n  \"audio/wav\",                                   // wav\n  \"video/webm\",                                  // webm\n  \"audio/webm\"                                   // webm (audio)\n].includes($json.mimeType) }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Other doc types"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "656e77d3-0b79-4f95-a950-93f24506f8ce",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "text/csv",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CSV"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "84f9cf5d-6348-43fc-b5cd-2833b4c9dd5f",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Excel"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0ceeb2c2-9931-479c-b105-36f9ef0381b1",
+                    "leftValue": "={{ $json.mimeType }}",
+                    "rightValue": "application/vnd.google-apps.spreadsheet",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Google Sheets"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1152,
+        -3728
+      ],
+      "id": "edebc55c-a016-46a4-bd5f-674ccada70f6",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "65a2b6a1-2817-4d30-a0a3-ba1baeffe286",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "8ce1313f-d7ec-4336-88e7-1b861379733d",
+              "name": "data_type",
+              "value": "={{ $json.data_type }}",
+              "type": "string"
+            },
+            {
+              "id": "d1c52fad-f1af-46de-aa21-387bcb350309",
+              "name": "array_keys",
+              "value": "={{ $json.array_keys || null }}",
+              "type": "string"
+            },
+            {
+              "id": "68e7090d-0fba-4d63-a3d7-d3a10b17905c",
+              "name": "data_rows",
+              "value": "={{ $json.data_rows || null }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3728,
+        -2688
+      ],
+      "id": "0f087f6a-9fc3-4942-89e7-b2e9d59f7bf1",
+      "name": "Set Text (Merged)"
+    },
+    {
+      "parameters": {
+        "content": "## Tabular Data",
+        "height": 400,
+        "width": 1408,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1568,
+        -1408
+      ],
+      "id": "669cd09f-f4ce-443e-8408-41923c4dbb0c",
+      "name": "Sticky Note23"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "tabular_document_rows",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "record_manager_id",
+              "condition": "eq",
+              "keyValue": "={{ $('record_id').item.json.record_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1056,
+        -1280
+      ],
+      "id": "075d10c1-995d-47b8-9599-e3bb5fe44202",
+      "name": "Delete Old Data Rows",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tabular_document_rows",
+          "mode": "list",
+          "cachedResultName": "tabular_document_rows"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_data": "={{ $json.toJsonString().replaceAll(/'/g, \"''\") }}",
+            "record_manager_id": "={{ $('record_id').item.json.record_id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "record_manager_id",
+              "displayName": "record_manager_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_data",
+              "displayName": "row_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -336,
+        -1280
+      ],
+      "id": "106f6d09-95a5-41c7-b021-ee98db7d9321",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "=data_rows",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        -1280
+      ],
+      "id": "64e1cf2f-eed4-40fe-9e1b-c6f3c7ff4753",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c9e3737c-f583-4bc3-8d89-31deb8a4a167",
+                    "leftValue": "={{ $('Set Text (Merged)').item.json.data_type }}",
+                    "rightValue": "tabular",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Tabular data"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Set Text (Merged)').item.json.data_type }}",
+                    "rightValue": "unstructured",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b013e0cd-4c9f-4123-84cf-91f87b92dc76"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Unstructured data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1328,
+        -288
+      ],
+      "id": "ffc0bdb9-4ff6-4bac-87ad-f1ca3ff2c41b",
+      "name": "Check data type"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8feea590-03e5-4da9-acf1-071537ee5b92",
+              "name": "data_rows",
+              "value": "={{ $('Set Text (Merged)').item.json.data_rows }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -816,
+        -1280
+      ],
+      "id": "f892c797-cc03-4964-a2fa-b6ff62bfe3b1",
+      "name": "data_rows"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3680,
+        -800
+      ],
+      "id": "9e61ee3b-3f4a-41b3-b4c7-bd3b72411545",
+      "name": "No Operation, do nothing3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2cb5d7fc-ea46-460e-bb1e-21756214930a",
+              "name": "record_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1504,
+        -288
+      ],
+      "id": "ac549c29-51d8-42da-9dcb-64aa250de7aa",
+      "name": "record_id"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -672,
+        -2704
+      ],
+      "id": "bd5322d1-b30f-414d-b256-74c882f9f2e1",
+      "name": "Download File2",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -672,
+        -2512
+      ],
+      "id": "0418695e-f426-49f7-b350-544d03e54848",
+      "name": "Download File3",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        624,
+        -3840
+      ],
+      "id": "823a35d5-ea1e-4580-9958-789a246a7237",
+      "name": "Download File4",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "xYznj1HOqGxHjDN9",
+          "mode": "list",
+          "cachedResultName": "Multimodal RAG - TheAIAutomators - SOTA RAG Sub-workflow - 1.0 Active"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "binary_file": "={{ $json.data_base64 }}"
+          },
+          "matchingColumns": [
+            "binary_file"
+          ],
+          "schema": [
+            {
+              "id": "binary_file",
+              "displayName": "binary_file",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1216,
+        -3840
+      ],
+      "id": "885031da-5c10-4076-8370-7b98a5680a5f",
+      "name": "Execute Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "binaryToPropery",
+        "destinationKey": "data_base64",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        928,
+        -3840
+      ],
+      "id": "2bf2c82b-30f0-4100-b827-2db470f448b9",
+      "name": "Extract from File1"
+    },
+    {
+      "parameters": {
+        "content": "Multimodal RAG sub-workflow must be configured if Multimodal is enabled in the \"Set Data\" node.",
+        "height": 100
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        160,
+        -3968
+      ],
+      "id": "b3725684-dca5-4d3e-ad05-688a23514ad1",
+      "name": "Sticky Note24"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "A6uZWZp8UkcxmaZp",
+          "mode": "list",
+          "cachedResultName": "Knowledge Graph Updates - STOA RAG Blueprint - v1.0"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "record_manager_item_json": "={{ $('Search Record Manager').item.json }}",
+            "record_manager_item_json_hash": "={{ $('Search Record Manager').item.json.hash }}",
+            "new_hash": "={{ $('Generate Hash').item.json.hash }}",
+            "text": "={{ JSON.stringify($('Set Text (Merged)').item.json.text) }}",
+            "doc_id": "={{ $('Set Data').first().json.doc_id }}",
+            "supabase_row_id": "={{ $('Create Row in Record Manager').isExecuted ? $('Create Row in Record Manager').item.json.id : $('Search Record Manager').item.json.id }}",
+            "graph_id": "={{ $('Search Record Manager').item.json.graph_id}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "record_manager_item_json",
+              "displayName": "record_manager_item_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "record_manager_item_json_hash",
+              "displayName": "record_manager_item_json_hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "new_hash",
+              "displayName": "new_hash",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "doc_id",
+              "displayName": "doc_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "supabase_row_id",
+              "displayName": "supabase_row_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "graph_id",
+              "displayName": "graph_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -592,
+        -912
+      ],
+      "id": "42571c3e-09a7-441d-8080-8252e00d61fe",
+      "name": "Execute Knowledge Graph Updates"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "15ce0e44-3fcb-4b60-83b6-8e6e721ff266",
+              "leftValue": "={{ $('Set Data').first().json.contextual_embedding_enabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1888,
+        -464
+      ],
+      "id": "fee42fad-0059-4b1f-9e5f-2cedb214f6e2",
+      "name": "Contextual embedding enabled?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "63096a5f-5247-474b-95b4-cbeadca1f982",
+              "name": "chunk",
+              "value": "={{ $json.choices[0].message.content }} - {{ $('Loop over Chunks').item.json.chunk }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2688,
+        -592
+      ],
+      "id": "56c9431d-dcfb-4ff5-91d6-6722ec0ad10e",
+      "name": "Chunk with contextual embedding"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "63096a5f-5247-474b-95b4-cbeadca1f982",
+              "name": "chunk",
+              "value": "={{ $json.choices[0].message.content }} - {{ $('Loop over Chunks').item.json.chunk }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2688,
+        -400
+      ],
+      "id": "c4172ca1-6846-4e28-b01a-a3facff6a7f1",
+      "name": "Chunk without contextual embedding"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c9e3737c-f583-4bc3-8d89-31deb8a4a167",
+                    "leftValue": "={{ $('Set Text (Merged)').item.json.data_type }}",
+                    "rightValue": "tabular",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Tabular data"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Set Text (Merged)').item.json.data_type }}",
+                    "rightValue": "unstructured",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b013e0cd-4c9f-4123-84cf-91f87b92dc76"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Unstructured data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -912,
+        -944
+      ],
+      "id": "21b280b7-570f-462e-83a7-a3f1f14a2a1b",
+      "name": "Check data type1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5",
+          "mode": "list",
+          "cachedResultName": "gpt-5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -384,
+        1184
+      ],
+      "id": "b000a336-5810-435b-a18c-94651bd25e61",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "d5ddbf0781dd3f23",
+          "name": "OpenAi account AW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# State-of-the-Art RAG Agent (With Long Term Memory)",
+        "height": 648,
+        "width": 2028,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -992,
+        704
+      ],
+      "id": "34e6bf12-804d-41e8-bd66-0c5bde20f2d5",
+      "name": "Sticky Note20"
+    },
+    {
+      "parameters": {
+        "name": "Query_Vector_Store",
+        "description": "Call this to query data from our vector store knowledgebase",
+        "workflowId": {
+          "__rl": true,
+          "value": "A4BVrX5qYlJ7HUMI",
+          "mode": "list",
+          "cachedResultName": "TheAIAutomators.com - RAG Masterclass - Lesson 9 - SOTA - v2.0 Dev 0.3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('query', ``, 'string') }}",
+            "session_id": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('session_id', ``, 'string') }}",
+            "type": "vector"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        272,
+        1184
+      ],
+      "id": "66d0b771-0887-443b-9e90-2f34dde3cafa",
+      "name": "Query Vector Store1"
+    },
+    {
+      "parameters": {
+        "name": "Query_Knowledge_Graph",
+        "description": "Call this to query data from our knowledge graph",
+        "workflowId": {
+          "__rl": true,
+          "value": "A4BVrX5qYlJ7HUMI",
+          "mode": "list",
+          "cachedResultName": "TheAIAutomators.com - RAG Masterclass - Lesson 9 - STOA - v2.0 Dev 0.3"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('query', ``, 'string') }}",
+            "session_id": "=",
+            "type": "graph"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [
+        432,
+        1184
+      ],
+      "id": "a919a58a-25d0-4db3-a375-75635075dda4",
+      "name": "Query Knowledge Graph1",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('When chat message received').item.json.chatInput }}",
+        "options": {
+          "systemMessage": "=---Role---\n\nYou are a helpful assistant responding to a user's query based on the information provided by the Vector and Graph tools and structured datasets.\n\n---Goal---\n\nYou are tasked with creating and executing a retrieval strategy to best answer the users question.\n\nThe output should be a well-reserached response to the users query based on the output from these tools and to follow the Response Rules set about below.\n\nYou must consider both the conversation history and the current query.\n\nIf the question involves tabular data\u2014such as calculating sums, averages, or finding maximum values\u2014the vector store and graph tools may be unreliable. In that case, start by reviewing the available datasets, identify the ones most likely to contain the answer, and then construct a SQL query to analyze them.\n\nYour goal is to provide an accurate answer based on the output from these tools ONLY.\n\n---Response Rules---\n\n- Ideal target format and length: Multiple Paragraphs\n- Use markdown formatting with appropriate section headings\n- Please respond in the same language as the user's question.\n- If there are images provided from the retrieved information, you should return this in markdown format.\n- Ensure the response maintains continuity with the conversation history.\n- List up to 5 most important reference sources at the end under \"References\" section. Clearly indicating whether each source is from, such as Vector Store (VS)\n- If you cannot answer the question using the provided information or if no information is returned from the tools, say \"Sorry I don't know\".\n- Do not make anything up. \n- Do not include information not provided by the Knowledge Bases.\n\n{{\n(() => {\n  const raw = $json.data;\n  if (raw == null) return '';\n\n  const toText = v => (typeof v === 'string' ? v : JSON.stringify(v));\n  const rawText = toText(raw);\n  const cleaned = rawText.replace(/[\\u0000-\\u001F\\u007F]/g, '').trim();\n  if (!cleaned || cleaned === '{}' || cleaned === '[]') return '';\n\n  // Parse only if the cleaned text looks like JSON\n  let obj = raw;\n  if (typeof raw === 'string') {\n    const first = cleaned[0];\n    if (first === '{' || first === '[') {\n      try { obj = JSON.parse(cleaned); } catch { return ''; }\n    } else {\n      return '';\n    }\n  }\n\n  // Support either { edges: [...] } or a bare array of edges\n  const edges = Array.isArray(obj?.edges) ? obj.edges : (Array.isArray(obj) ? obj : []);\n  if (!edges.length) return '';\n\n  const facts = [...new Set(\n    edges\n      .map(e => (e && typeof e.fact === 'string') ? e.fact.replace(/\\s+/g, ' ').trim() : '')\n      .filter(Boolean)\n  )];\n\n  return facts.length\n    ? \"---User Information---\\nThis is information about the user:\\n\" + facts.map(f => \"- \" + f).join(\"\\n\")\n    : '';\n})()\n}}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        -208,
+        928
+      ],
+      "id": "be302464-e7a9-4d56-a3ad-2cc8e304f27c",
+      "name": "Agentic RAG1",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -224,
+        1184
+      ],
+      "id": "85505ff4-74fd-4fab-98d0-54958aa85069",
+      "name": "Supabase Short-Term Memory2",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getzep.com/api/v2/graph/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $json.user_id }}\",\n  \"query\": {{ JSON.stringify($('When chat message received').item.json.chatInput) }},\n  \"scope\": \"edges\",\n  \"limit\": 5,\n  \"search_filters\": {\n    \"min_relevance\": 0.7\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -416,
+        928
+      ],
+      "id": "7c2d0726-51b2-461b-bddf-028df3788bc2",
+      "name": "Get Long Term Memories",
+      "credentials": {
+        "zepApi": {
+          "id": "f6f64a139a13060a",
+          "name": "Zep Api account"
+        },
+        "httpHeaderAuth": {
+          "id": "7Hvk0jyX94eRC3jd",
+          "name": "Zep Account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        304,
+        992
+      ],
+      "id": "6ec99b1f-d8ec-4bea-9629-21575891ebd2",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c2e95998-ad5f-4676-b307-b91f5c4adaad",
+              "name": "user_id",
+              "value": "user1234",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -672,
+        928
+      ],
+      "id": "0b5e4bf1-a66f-4a51-88eb-aa502e60b47b",
+      "name": "user_id"
+    },
+    {
+      "parameters": {
+        "content": "Note: This template uses n8n chat and by default, this long term memory is shared across all chat sessions. To maintain separate long term memories for different users, check out our community post here, as there are multiple approaches for this depending on how you're deploying the agent. ",
+        "height": 192,
+        "width": 256
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -752,
+        1088
+      ],
+      "typeVersion": 1,
+      "id": "ab46667b-6f99-47e5-b0b9-b27a39e4ee60",
+      "name": "Sticky Note25"
+    },
+    {
+      "parameters": {
+        "content": "### TODO: Add User ID here",
+        "height": 200,
+        "width": 232
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -736,
+        880
+      ],
+      "id": "68cc455a-45a0-4cec-9c48-3b82d07fb9e3",
+      "name": "Sticky Note26"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Execute a SQL query on the tabular_document_rows table. \n\nInstructions:\n\nYou will always be querying based on a specific id.\n\nEach row in the table contains a row_data field (of type jsonb) that holds the data for that row, with keys matching the file schema defined in the record_manager table.\n\nThe record_manager_id is the id field from the record_manager table. Always filter based on this specific id when querying the tabular_document_rows table.\n\nWhen writing your SELECT clause, extract values from the row_data JSON using the ->> operator and cast them as needed (e.g., to numeric for calculations).\n\nWhen applying WHERE clauses, you should run SELECT DISTINCT queries (LIMIT 100) on the relevant fields first to understand the valid options. This applies even if the user provides a specific value\u2014you must verify that the value exists in the data before using it.\n\nDo NOT run SELECT DISTINCT queries for ID columns.\n\nItems within your SELECT needs to use the data within row_data field.\n\nExample query: Find maximum value for a field (e.g. \"profit\")\n\nSELECT MAX((row_data->>'profit')::numeric) AS max_profit\nFROM tabular_document_rows\nWHERE file_id = '123';\n\nExample query: Group and aggregate (e.g. total revenue by country)\n\nSELECT row_data->>'country' AS country,\n       SUM((row_data->>'revenue')::numeric) AS total_revenue\nFROM tabular_document_rows\nWHERE record_manager_id = '123'\nGROUP BY row_data->>'country';\n\nExample query: Group and aggregate (e.g. total revenue by country)\nSELECT row_data->>'salesperson' AS salesperson,\n       SUM((row_data->>'profit')::numeric) AS total_profit\nFROM tabular_document_rows\nWHERE record_manager_id = '123'\nGROUP BY row_data->>'salesperson';",
+        "operation": "executeQuery",
+        "query": "{{ $fromAI('sql_query') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        -1680,
+        1152
+      ],
+      "id": "2ed22eac-b5f7-4d0f-a201-4d779f4a3f2c",
+      "name": "Query Tabular Rows",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to fetch all available documents from the record_manager, this will include the table schema and the id",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "record_manager_v2",
+          "mode": "list",
+          "cachedResultName": "record_manager_v2"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "data_type",
+              "value": "tabular"
+            }
+          ]
+        },
+        "options": {
+          "outputColumns": [
+            "id",
+            "document_title",
+            "schema"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        -1840,
+        1152
+      ],
+      "id": "b0ead93a-c41e-4049-800f-30fd64daa724",
+      "name": "Get datasets from record_manager",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Execute a SQL query on the tabular_document_rows table.\n\nInstructions:\n\nYou will always be querying based on a specific id.\n\nEach row in the table contains a row_data field (of type jsonb) that holds the data for that row, with keys matching the file schema defined in the record_manager table.\n\nThe record_manager_id is the id field from the record_manager table. Always filter based on this specific id when querying the tabular_document_rows table.\n\nWhen writing your SELECT clause, extract values from the row_data JSON using the ->> operator and cast them as needed (e.g., to numeric for calculations).\n\nItems within your SELECT needs to use the data within row_data field.\n\nExample query: Find maximum value for a field (e.g. \"profit\")\n\nSELECT MAX((row_data->>'profit')::numeric) AS max_profit\nFROM tabular_document_rows\nWHERE file_id = '123';\n\nExample query: Group and aggregate (e.g. total revenue by country)\n\nSELECT row_data->>'country' AS country,\n       SUM((row_data->>'revenue')::numeric) AS total_revenue\nFROM tabular_document_rows\nWHERE record_manager_id = '123'\nGROUP BY row_data->>'country';\n\nExample query: Group and aggregate (e.g. total revenue by country)\nSELECT row_data->>'salesperson' AS salesperson,\n       SUM((row_data->>'profit')::numeric) AS total_profit\nFROM tabular_document_rows\nWHERE record_manager_id = '123'\nGROUP BY row_data->>'salesperson';",
+        "operation": "executeQuery",
+        "query": "{{ $fromAI('sql_query') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        96,
+        1184
+      ],
+      "id": "3ff9734b-9afa-4235-91ea-0b2a1a65ad78",
+      "name": "Query Tabular Rows1",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Use this tool to fetch all available documents from the record_manager, this will include the table schema and the id",
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "record_manager_v2",
+          "mode": "list",
+          "cachedResultName": "record_manager_v2"
+        },
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "data_type",
+              "value": "tabular"
+            }
+          ]
+        },
+        "options": {
+          "outputColumns": [
+            "id",
+            "document_title",
+            "schema"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.5,
+      "position": [
+        -64,
+        1184
+      ],
+      "id": "eaf57f33-e924-4ada-a47f-ac3ef5139ec8",
+      "name": "Get datasets from record_manager1",
+      "credentials": {
+        "postgres": {
+          "id": "28a4ea840e85ae45",
+          "name": "Postgres account (Supabase AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "tabular_document_rows",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "record_manager_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Search Record Manager1').item.json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -2080,
+        -4832
+      ],
+      "id": "c88342fc-a3ac-4e93-b290-1566eb46925b",
+      "name": "Delete Old Tabular Data Rows",
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "2b9752648e982ef0",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getzep.com/api/v2/users",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"user_id\":\"user1234\"}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        992
+      ],
+      "id": "a9a39089-13ec-47d2-8cde-365113bc965d",
+      "name": "Create Zep User",
+      "credentials": {
+        "zepApi": {
+          "id": "f6f64a139a13060a",
+          "name": "Zep Api account"
+        },
+        "httpHeaderAuth": {
+          "id": "7Hvk0jyX94eRC3jd",
+          "name": "Zep Account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### TODO: Run this node once to manually create a Zep user",
+        "height": 264,
+        "width": 232
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        704,
+        896
+      ],
+      "id": "c4fffc42-218b-40df-a632-1df201c3ea16",
+      "name": "Sticky Note27"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/parsing/job/{{ $('Upload file to LlamaParse').item.json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "edf43f04-c610-4485-b225-bc3f8851e826",
+      "name": "Get Processing Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1216,
+        -2736
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MABAzuclsaJOyWuB",
+          "name": "Llamaparse key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "300fce8c-b19a-4d0c-86e8-f62853c70ce2",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "SUCCESS"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SUCCESS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "e6058aa0-a3e2-4ce3-9bed-6ff41a5be052",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "ERROR"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ERROR"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ceb6338f-4261-40ac-be11-91f61c7302ba",
+                    "operator": {
+                      "type": "number",
+                      "operation": "gt"
+                    },
+                    "leftValue": "={{ $json.retry_counter }}",
+                    "rightValue": "={{ $('Set Data').item.json.llamaparse_max_polling_attempts }}"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "EXCEEDED_RETRIES"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ceb6338f-4261-40ac-be11-91f61c7302ba",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "CANCELED"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CANCELED"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "0fa97d86-432a-409a-917e-5f1a002b1ab9",
+                    "operator": {
+                      "name": "filter.operator.equals",
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "PENDING"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PENDING"
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": false
+        }
+      },
+      "id": "f57abd2b-0ab8-423f-b30c-028ec614ce14",
+      "name": "Is Job Ready?",
+      "type": "n8n-nodes-base.switch",
+      "position": [
+        736,
+        -2976
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloud.llamaindex.ai/api/parsing/upload",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "=data"
+            },
+            {
+              "name": "model",
+              "value": "openai-gpt-4-1-mini"
+            },
+            {
+              "name": "high_res_ocr",
+              "value": "true"
+            },
+            {
+              "name": "adaptive_long_table",
+              "value": "true"
+            },
+            {
+              "name": "outlined_table_extraction",
+              "value": "true"
+            },
+            {
+              "name": "output_tables_as_HTML",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e16c2052-1b9d-45d4-94b3-8162edb3edaa",
+      "name": "Upload file to LlamaParse",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -16,
+        -3056
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MABAzuclsaJOyWuB",
+          "name": "Llamaparse key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/parsing/job/{{ $json.id }}/result/markdown",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "id": "517fbb71-f5f1-43ce-bf95-8e6e9875f9f2",
+      "name": "Get parsed document",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        960,
+        -3104
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "MABAzuclsaJOyWuB",
+          "name": "Llamaparse key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Loop Over Items').item.json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -496,
+        -3184
+      ],
+      "id": "c525e414-96a4-4c15-b8c3-8331b912190d",
+      "name": "Download File5",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "1b211f8b-84a3-4a18-8768-d6f15ab4aca1",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        960,
+        -2784
+      ],
+      "webhookId": "278c3ecb-0e2c-4b8a-9f33-3b608c13f78a",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Set Data').first().json.doc_id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "172iL7TQkR119SP4bWbVc7sqxYVOWCUDq",
+          "mode": "list",
+          "cachedResultName": "Error",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/172iL7TQkR119SP4bWbVc7sqxYVOWCUDq"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3920,
+        -3040
+      ],
+      "id": "9e429920-0e43-4635-9ec1-559928425dde",
+      "name": "Move to error folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4240,
+        -1648
+      ],
+      "id": "cd0c4c87-6d79-4826-8092-7e31b6aa947e",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Set Data').first().json.doc_id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "172iL7TQkR119SP4bWbVc7sqxYVOWCUDq",
+          "mode": "list",
+          "cachedResultName": "Error",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/172iL7TQkR119SP4bWbVc7sqxYVOWCUDq"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -2112,
+        -3088
+      ],
+      "id": "22d7a600-6504-4f58-bda6-69e6cec6735c",
+      "name": "Move to error folder1",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "29hh4KY4MeILFO9p",
+          "name": "Google Drive Account - TheAIAutomators Team"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 7
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        -3008
+      ],
+      "id": "6bb26875-102a-41e0-93d0-86dfb3b38aae",
+      "name": "Wait1",
+      "webhookId": "1bb2aee5-4178-45a3-a879-647c9c185fd1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b53d0b18-0e5e-4b24-915d-933cd7a241b5",
+              "name": "retry_counter",
+              "value": "={{ $('Is Job Ready?').item.json.retry_counter + 1}}",
+              "type": "number"
+            },
+            {
+              "id": "48d8fa5f-8935-4c27-8b72-05af922886c9",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "e8c53db0-a41b-44cc-a0ef-9effcb4b94f8",
+              "name": "id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        544,
+        -2784
+      ],
+      "id": "5e3b7aa2-6d5f-4f29-bf4a-41b336314249",
+      "name": "Counter"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3533c696-8cb4-4be8-967a-555f88dbca3c",
+              "name": "retry_counter",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "0c517b55-97fb-4d4b-835b-930cf72c4738",
+              "name": "status",
+              "value": "={{ $('Upload file to LlamaParse').item.json.status }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        -2992
+      ],
+      "id": "cdb08379-397e-45f5-9002-ffb0b3d637e5",
+      "name": "Set counter"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c9e3737c-f583-4bc3-8d89-31deb8a4a167",
+                    "leftValue": "={{ $('Set Data').item.json.send_tabular_data_to_vector_store }}",
+                    "rightValue": "tabular",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Yes"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1824,
+        -848
+      ],
+      "id": "b29a37d6-f6c9-4b67-84b4-9eba343d96d0",
+      "name": "Send tabular data to vector store?"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "id"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        704,
+        -1120
+      ],
+      "id": "db383ae4-436e-415c-84b3-1be7cdaca26e",
+      "name": "Aggregate4"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "jfvPAjwlf1jVaW3Y",
+          "mode": "list",
+          "cachedResultName": "Zep - Update Long Term Memories - BLUEPRINT"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('When chat message received').item.json.sessionId }}",
+            "user_id": "={{ $('user_id').item.json.user_id }}",
+            "message_content": "={{ $('When chat message received').item.json.chatInput }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "user_id",
+              "displayName": "user_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message_content",
+              "displayName": "message_content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        784
+      ],
+      "id": "a6341a37-b6b2-41b9-8c52-2b4635527a6f",
+      "name": "Execute workflow - Save Zep long term memories"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Hash": {
+      "main": [
+        [
+          {
+            "node": "Search Record Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Record Manager": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Row in Record Manager": {
+      "main": [
+        [
+          {
+            "node": "record_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Set Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Vector Store1": {
+      "main": [
+        [
+          {
+            "node": "Loop over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Previous Vectors": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update our Record Manager": {
+      "main": [
+        [
+          {
+            "node": "record_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Update our Record Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Text": {
+      "main": [
+        [
+          {
+            "node": "Set Text (Merged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set up Text for Embedding": {
+      "main": [
+        [
+          {
+            "node": "Chunking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload File": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Markdown": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Files": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Updated Files": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Files": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Previous Vectors1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate1": {
+      "main": [
+        [
+          {
+            "node": "Delete Record from Record Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Search Record Manager1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Record Manager1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Delete Previous Vectors1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Record from Record Manager": {
+      "main": [
+        [
+          {
+            "node": "Delete Old Tabular Data Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Base64 the Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Base64 the Markdown": {
+      "main": [
+        [
+          {
+            "node": "Convert to Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Binary": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Data": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If File": {
+      "main": [
+        [
+          {
+            "node": "Archive File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive File": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File1": {
+      "main": [
+        [
+          {
+            "node": "Upload File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Trigger Firecrawl",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Vector Store": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Switch2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding From Query": {
+      "main": [
+        [
+          {
+            "node": "Trigger Hybrid Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Hybrid Search": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rerank with Cohere 3.5": {
+      "main": [
+        [
+          {
+            "node": "Return Reordered Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Array": {
+      "main": [
+        [
+          {
+            "node": "Rerank with Cohere 3.5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunking": {
+      "main": [
+        [
+          {
+            "node": "Loop over Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over Chunks": {
+      "main": [
+        [
+          {
+            "node": "Aggregate2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Contextual embedding enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Chunk Description": {
+      "main": [
+        [
+          {
+            "node": "Chunk with contextual embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Setup Chunk for Embedding": {
+      "main": [
+        [
+          {
+            "node": "Supabase Vector Store1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Create Array",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Is LightRAG enabled?1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Row in Record Manager",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Previous Vectors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate2": {
+      "main": [
+        [
+          {
+            "node": "If File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Knowledge Graph": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch2": {
+      "main": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Query Graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Graph": {
+      "main": [
+        [
+          {
+            "node": "Tidy up response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser2": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Enrich",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Enrich",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Metadata Fields": {
+      "main": [
+        [
+          {
+            "node": "Prep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep": {
+      "main": [
+        [
+          {
+            "node": "Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich": {
+      "main": [
+        [
+          {
+            "node": "Set up Text for Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory Manager": {
+      "main": [
+        [
+          {
+            "node": "Fetch Metadata Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Prep Metadata1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Prep Metadata1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Metadata1": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding From Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Metadata Fields1": {
+      "main": [
+        [
+          {
+            "node": "Prep1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep1": {
+      "main": [
+        [
+          {
+            "node": "Prep Metadata1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Short-Term Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase Short-Term Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Chat Memory Manager",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete a file": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is LightRAG enabled?": {
+      "main": [
+        [
+          {
+            "node": "Execute Knowledge Graph Updates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Metadata Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is LightRAG enabled?1": {
+      "main": [
+        [
+          {
+            "node": "Check data type1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Multimodal enabled?": {
+      "main": [
+        [
+          {
+            "node": "Download File4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a document": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from Excel": {
+      "main": [
+        [
+          {
+            "node": "Aggregate3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from CSV": {
+      "main": [
+        [
+          {
+            "node": "Aggregate3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Aggregate3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Array keys": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Set Text for Tabular Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get google sheet info": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate3": {
+      "main": [
+        [
+          {
+            "node": "Array keys",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Operation, do nothing2": {
+      "main": [
+        [
+          {
+            "node": "Generate Hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Get a document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Multimodal enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download File5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download File2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download File3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get google sheet info",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move to error folder1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Text (Merged)": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Text for Tabular Data": {
+      "main": [
+        [
+          {
+            "node": "Set Text (Merged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Old Data Rows": {
+      "main": [
+        [
+          {
+            "node": "data_rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check data type": {
+      "main": [
+        [
+          {
+            "node": "Delete Old Data Rows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is LightRAG enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "data_rows": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Aggregate4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Operation, do nothing3": {
+      "main": [
+        [
+          {
+            "node": "If File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "record_id": {
+      "main": [
+        [
+          {
+            "node": "Check data type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File2": {
+      "main": [
+        [
+          {
+            "node": "Extract from CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File3": {
+      "main": [
+        [
+          {
+            "node": "Extract from Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File4": {
+      "main": [
+        [
+          {
+            "node": "Extract from File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File1": {
+      "main": [
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Knowledge Graph Updates": {
+      "main": [
+        []
+      ]
+    },
+    "Contextual embedding enabled?": {
+      "main": [
+        [
+          {
+            "node": "Generate Chunk Description",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chunk without contextual embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk with contextual embedding": {
+      "main": [
+        [
+          {
+            "node": "Setup Chunk for Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk without contextual embedding": {
+      "main": [
+        [
+          {
+            "node": "Setup Chunk for Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check data type1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Execute Knowledge Graph Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Knowledge Graph1": {
+      "ai_tool": [
+        []
+      ]
+    },
+    "Supabase Short-Term Memory2": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Long Term Memories": {
+      "main": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agentic RAG1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Execute workflow - Save Zep long term memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "user_id": {
+      "main": [
+        [
+          {
+            "node": "Get Long Term Memories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get datasets from record_manager": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Tabular Rows": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Tabular Rows1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get datasets from record_manager1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agentic RAG1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Old Tabular Data Rows": {
+      "main": [
+        [
+          {
+            "node": "Delete a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Processing Status": {
+      "main": [
+        [
+          {
+            "node": "Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Job Ready?": {
+      "main": [
+        [
+          {
+            "node": "Get parsed document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move to error folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move to error folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move to error folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload file to LlamaParse": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download File5": {
+      "main": [
+        [
+          {
+            "node": "Upload file to LlamaParse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get parsed document": {
+      "main": [
+        [
+          {
+            "node": "Set Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Processing Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move to error folder": {
+      "main": [
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Operation, do nothing": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move to error folder1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Set counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Counter": {
+      "main": [
+        [
+          {
+            "node": "Is Job Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set counter": {
+      "main": [
+        [
+          {
+            "node": "Is Job Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send tabular data to vector store?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Metadata Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate4": {
+      "main": [
+        [
+          {
+            "node": "Send tabular data to vector store?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4352cbb2-393c-48fd-b8cb-48c87eec7fd5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b5d1ea132a4e071e6288b3143f31284b91560858bdef3f0c88a49f587fc91a29"
+  },
+  "id": "7Se6yVADlKkc3UPD",
+  "tags": [
+    {
+      "createdAt": "2025-05-12T13:43:59.783Z",
+      "updatedAt": "2025-05-12T13:43:59.783Z",
+      "id": "d3ygIhrGjDmzgrW0",
+      "name": "TheAIAutomators.com"
+    }
+  ]
+}

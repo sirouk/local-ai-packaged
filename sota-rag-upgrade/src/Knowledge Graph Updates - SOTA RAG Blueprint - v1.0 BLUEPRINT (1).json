@@ -1,0 +1,535 @@
+{
+  "name": "Knowledge Graph Updates - SOTA RAG Blueprint - v1.0 BLUEPRINT",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "record_manager_item_json",
+              "type": "object"
+            },
+            {
+              "name": "record_manager_item_json_hash"
+            },
+            {
+              "name": "new_hash"
+            },
+            {
+              "name": "doc_id"
+            },
+            {
+              "name": "text"
+            },
+            {
+              "name": "supabase_row_id",
+              "type": "number"
+            },
+            {
+              "name": "graph_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -528,
+        -48
+      ],
+      "id": "2d1b52ab-7e67-43ff-bc06-29fe6cd947da",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://lightrag:8020/documents/text",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"file_source\": \"{{ $('When Executed by Another Workflow').item.json.doc_id }}\",\n  \"text\": {{ JSON.stringify($('When Executed by Another Workflow').item.json.text) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        -80
+      ],
+      "id": "ee08e85e-3677-4bf9-9199-9c712f09fff0",
+      "name": "Insert Into Knowledge Graph",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ASaNYCEZJOKUmtf9",
+          "name": "LightRAG on Render 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://lightrag:8020/documents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        -80
+      ],
+      "id": "c0b292e7-ef9a-4914-8754-7dd9d1ca9041",
+      "name": "Fetch Documents",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ASaNYCEZJOKUmtf9",
+          "name": "LightRAG on Render 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and search for document by file_path\nfor (const item of $input.all()) {\n  // Set your target file path here - you can modify this or make it dynamic\n  const targetFilePath = $('When Executed by Another Workflow').first().json.doc_id; // Change this to your desired file path\n  \n  // Alternative: Get file_path from a parameter or previous node\n  // const targetFilePath = $parameter[\"file_path\"]; // If using a parameter\n  // const targetFilePath = item.json.searchFilePath; // If coming from previous node\n  \n  // Get the statuses object\n  const statuses = item.json.statuses;\n  \n  let foundId = null;\n  let foundDocument = null;\n  \n  // Loop through all status keys dynamically (PENDING, PROCESSED, etc.)\n  for (const statusKey in statuses) {\n    const documentsArray = statuses[statusKey];\n    \n    // Make sure it's an array before looping\n    if (Array.isArray(documentsArray)) {\n      // Loop through each document in this status array\n      for (const document of documentsArray) {\n        if (document.file_path === targetFilePath) {\n          foundId = document.id;\n          foundDocument = document;\n          break;\n        }\n      }\n    }\n    \n    // If we found it, break out of the outer loop too\n    if (foundId) {\n      break;\n    }\n  }\n  \n  // Add the results to the item\n  item.json.foundDocumentId = foundId;\n  item.json.foundDocument = foundDocument; // Optional: include full document object\n  item.json.searchedFilePath = targetFilePath; // Optional: track what was searched\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        -80
+      ],
+      "id": "5eba0a83-71f9-40f0-872d-55063fb73d73",
+      "name": "Get ID"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('When Executed by Another Workflow').item.json.record_manager_item_json }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "object",
+                      "operation": "empty",
+                      "singleValue": true
+                    },
+                    "id": "ad01f150-f021-454c-aa13-eea5b26c2cba"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "dcd400bc-0b91-4c30-81bd-da402e4a2730",
+                    "leftValue": "={{ $('When Executed by Another Workflow').item.json.record_manager_item_json_hash }}",
+                    "rightValue": "={{ $('When Executed by Another Workflow').item.json.new_hash }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ca0c7ef8-09f9-4424-947b-8469b1ed8cac",
+                    "leftValue": "={{ $('When Executed by Another Workflow').item.json.record_manager_item_json_hash }}",
+                    "rightValue": "={{ $('When Executed by Another Workflow').item.json.new_hash }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        48,
+        -64
+      ],
+      "id": "644a25f9-ff01-4a5e-873c-64987568daae",
+      "name": "Handle Graph Updates",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "record_manager_v2",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('When Executed by Another Workflow').item.json.supabase_row_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "graph_id",
+              "fieldValue": "={{ $json.foundDocumentId }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        -80
+      ],
+      "id": "0215b2ab-fd0b-4ef3-b860-b0406ae9f64d",
+      "name": "Update our Record Manager1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "wwbxqbDc4H2RPQ1Y",
+          "name": "Supabase account (AW)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        -80
+      ],
+      "id": "deb10c76-2842-446e-8809-5ccb8ed489f9",
+      "name": "Wait",
+      "webhookId": "b1edd1e7-b82b-4c07-868f-92bb4cb9b817"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://lightrag:8020/documents/delete_document",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"doc_ids\": [\n    \"{{ $('When Executed by Another Workflow').item.json.graph_id}}\"\n  ],\n  \"delete_file\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -176,
+        240
+      ],
+      "id": "4720d63e-3217-4159-9908-a11039e34164",
+      "name": "Delete from Knowledge Graph",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ASaNYCEZJOKUmtf9",
+          "name": "LightRAG on Render 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://lightrag:8020/documents/pipeline_status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        240
+      ],
+      "id": "122fcd15-f0d6-43f4-98fe-bc7e4624c71e",
+      "name": "Check Pipeline Status",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ASaNYCEZJOKUmtf9",
+          "name": "LightRAG on Render 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        240
+      ],
+      "id": "486de186-9581-462b-97bc-cdec83242dd9",
+      "name": "Wait1",
+      "webhookId": "a5339f48-130a-41f0-92d2-45ab9615b19d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "012c16d2-28ca-40e3-9172-a98f8f748957",
+              "leftValue": "={{ $json.busy }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        464,
+        240
+      ],
+      "id": "345cea17-a3bc-41aa-a446-4ee4b63755e8",
+      "name": "If Deleted"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "17187342-26a5-4c05-875b-1a814b8cefbd",
+              "name": "lightrag_url",
+              "value": "http://lightrag:8020",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        -48
+      ],
+      "id": "2d973fe6-c011-4737-a697-6333555e272e",
+      "name": "Set Data"
+    },
+    {
+      "parameters": {
+        "content": "[![The AI Automators](https://www.theaiautomators.com/wp-content/uploads/2025/03/gray-logo.png)](https://www.theaiautomators.com/)",
+        "height": 140,
+        "width": 300,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        -240
+      ],
+      "id": "ca87312a-0359-4886-8793-3eeed6d3fa32",
+      "name": "Sticky Note8"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Insert Into Knowledge Graph": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Documents": {
+      "main": [
+        [
+          {
+            "node": "Get ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get ID": {
+      "main": [
+        [
+          {
+            "node": "Update our Record Manager1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Graph Updates": {
+      "main": [
+        [
+          {
+            "node": "Insert Into Knowledge Graph",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        [
+          {
+            "node": "Delete from Knowledge Graph",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Fetch Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete from Knowledge Graph": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pipeline Status": {
+      "main": [
+        [
+          {
+            "node": "If Deleted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Check Pipeline Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Deleted": {
+      "main": [
+        [
+          {
+            "node": "Insert Into Knowledge Graph",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Set Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Data": {
+      "main": [
+        [
+          {
+            "node": "Handle Graph Updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b6de6466-ba93-46a6-9a2b-f6051543fad5",
+  "meta": {
+    "instanceId": "b5d1ea132a4e071e6288b3143f31284b91560858bdef3f0c88a49f587fc91a29"
+  },
+  "id": "sYx8pc5eVb5eq2dy",
+  "tags": [
+    {
+      "createdAt": "2025-05-12T13:43:59.783Z",
+      "updatedAt": "2025-05-12T13:43:59.783Z",
+      "id": "d3ygIhrGjDmzgrW0",
+      "name": "TheAIAutomators.com"
+    }
+  ]
+}
