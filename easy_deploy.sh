@@ -245,14 +245,17 @@ elif [ "$DEPLOYMENT_MODE" = "2" ]; then
     if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
         USE_EXTERNAL_APIS=true
         USE_LOCAL_APIS=false
+        HYBRID_MODE=false
         echo -e "${GREEN}✓ SOTA RAG with External APIs only${NC}"
     elif [[ "$API_MODE" =~ ^[Bb]$ ]]; then
         USE_EXTERNAL_APIS=false
         USE_LOCAL_APIS=true
+        HYBRID_MODE=false
         echo -e "${GREEN}✓ SOTA RAG with Local-Only${NC}"
     else
         USE_EXTERNAL_APIS=true
         USE_LOCAL_APIS=true
+        HYBRID_MODE=true
         echo -e "${GREEN}✓ SOTA RAG with Both Local and External APIs (Hybrid)${NC}"
     fi
 else
@@ -273,14 +276,17 @@ else
     if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
         USE_EXTERNAL_APIS=true
         USE_LOCAL_APIS=true  # Always include local for InsightsLM
+        HYBRID_MODE=false
         echo -e "${GREEN}✓ Dual System: InsightsLM (Local) + SOTA RAG (External APIs)${NC}"
     elif [[ "$API_MODE" =~ ^[Bb]$ ]]; then
         USE_EXTERNAL_APIS=false
         USE_LOCAL_APIS=true
+        HYBRID_MODE=false
         echo -e "${GREEN}✓ Dual System: Both using local models and alternatives${NC}"
     else
         USE_EXTERNAL_APIS=true
         USE_LOCAL_APIS=true
+        HYBRID_MODE=true
         echo -e "${GREEN}✓ Dual System: Both Local and External APIs (Hybrid)${NC}"
     fi
 fi
@@ -508,7 +514,7 @@ if [ "$DEPLOYMENT_MODE" = "1" ]; then
     MAIN_MODEL=${MAIN_MODEL:-qwen3:8b-q4_K_M}
     read -p "Enter embedding model (press Enter for default: nomic-embed-text): " -r EMBEDDING_MODEL
     EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
-elif [ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ]; then
+elif [ "$HYBRID_MODE" = true ]; then
     # Hybrid mode - configure both external and local models
     echo -e "Hybrid mode - configuring both external and local models"
     
@@ -964,13 +970,17 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
         sleep 2
 
         # 3. Pre-pull models while we can (before container manages Ollama)
-        echo "  Pre-pulling models $MAIN_MODEL and $EMBEDDING_MODEL..."
+        # Always use local models for Ollama (following easy_setup_v2.sh pattern)
+        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}"
+        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}"
+        
+        echo "  Pre-pulling local models $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL..."
         # Start Ollama temporarily just for pulling
         ollama serve > /tmp/ollama-pull.log 2>&1 &
         TEMP_OLLAMA_PID=$!
         sleep 3
-        ollama pull "$MAIN_MODEL" || true
-        ollama pull "$EMBEDDING_MODEL" || true
+        ollama pull "$LOCAL_MAIN_MODEL" || true
+        ollama pull "$LOCAL_EMBEDDING_MODEL" || true
         # Stop the temporary Ollama
         kill $TEMP_OLLAMA_PID 2>/dev/null || true
         sleep 2
@@ -1190,11 +1200,14 @@ NGINX_CONF
         echo "  Ollama will run in Docker containers as configured"
         
         # Update x-init-ollama to pull selected models for Linux
-        echo "  Configuring Ollama to pull selected models..."
-        OLLAMA_COMMAND="echo 'Waiting for Ollama to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $MAIN_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $EMBEDDING_MODEL"
+        # Always use local models for Ollama (following easy_setup_v2.sh pattern)
+        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}"
+        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}"
+        
+        echo "  Configuring Ollama to pull local models..."
+        OLLAMA_COMMAND="echo 'Waiting for Ollama to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_MAIN_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_EMBEDDING_MODEL"
         yq eval ".[\"x-init-ollama\"].command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
-        OLLAMA_MODELS_TO_PULL="${LOCAL_MAIN_MODEL:-$MAIN_MODEL} ${LOCAL_EMBEDDING_MODEL:-$EMBEDDING_MODEL}"
-        echo "  Updated x-init-ollama to pull: $OLLAMA_MODELS_TO_PULL"
+        echo "  Updated x-init-ollama to pull: $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL"
     fi
     
     echo -e "${GREEN}✓ Ollama configuration prepared for local model deployment${NC}"
