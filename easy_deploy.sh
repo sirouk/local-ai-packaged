@@ -2193,7 +2193,23 @@ else
     echo "  ⚠️ No InsightsLM workflows found to update"
 fi
 
-# Activate InsightsLM workflows
+# Login to n8n web interface to establish session for workflow activation (following easy_setup_v2.sh)
+echo "  → Establishing n8n web session for workflow activation..."
+
+# Login via n8n web API to create session
+LOGIN_RESPONSE=$(curl -s -c /tmp/n8n-cookies.txt -X POST http://localhost:5678/rest/login \
+    -H 'Content-Type: application/json' \
+    -d "{\"emailOrLdapLoginId\":\"${UNIFIED_EMAIL}\",\"password\":\"${UNIFIED_PASSWORD}\"}" 2>/dev/null || echo "{}")
+
+if echo "$LOGIN_RESPONSE" | grep -q "\"email\":\"${UNIFIED_EMAIL}\""; then
+    echo "    ✅ Successfully logged into n8n web interface"
+    WEB_SESSION_ACTIVE=true
+else
+    echo "    ⚠️ Could not establish web session, workflows may need manual activation"
+    WEB_SESSION_ACTIVE=false
+fi
+
+# Activate InsightsLM workflows using web API (following easy_setup_v2.sh pattern)
 echo "  → Activating InsightsLM workflows..."
 
 INSIGHTSLM_WORKFLOWS=(
@@ -2208,15 +2224,96 @@ for WORKFLOW_NAME in "${INSIGHTSLM_WORKFLOWS[@]}"; do
     WORKFLOW_ID=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT id FROM workflow_entity WHERE name='${WORKFLOW_NAME}' ORDER BY \"createdAt\" DESC LIMIT 1;" 2>/dev/null | tr -d '\r')
     if [ -n "$WORKFLOW_ID" ]; then
         echo "    Activating workflow: $WORKFLOW_NAME"
-        # Deactivate first, then activate to ensure proper webhook registration
-        docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=false >/dev/null 2>&1 || true
-        sleep 1
-        docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=true >/dev/null 2>&1 || true
-        echo "      ✅ Workflow activated"
+        
+        if [ "$WEB_SESSION_ACTIVE" = true ]; then
+            # Use web API with session cookies for more reliable activation
+            echo "      Using web API activation..."
+            
+            # First deactivate via web API
+            curl -s -b /tmp/n8n-cookies.txt -X PATCH "http://localhost:5678/rest/workflows/${WORKFLOW_ID}" \
+                -H 'Content-Type: application/json' \
+                -d '{"active":false}' >/dev/null 2>&1 || true
+            sleep 1
+            
+            # Then activate via web API to register webhooks
+            ACTIVATION_RESPONSE=$(curl -s -b /tmp/n8n-cookies.txt -X PATCH "http://localhost:5678/rest/workflows/${WORKFLOW_ID}" \
+                -H 'Content-Type: application/json' \
+                -d '{"active":true}' 2>/dev/null)
+            
+            if echo "$ACTIVATION_RESPONSE" | grep -q '"active":true'; then
+                echo "      ✅ Workflow activated successfully via web API"
+            else
+                echo "      ⚠️ Web API activation may have failed, trying CLI fallback..."
+                docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=true >/dev/null 2>&1 || true
+            fi
+        else
+            # Fallback to CLI activation
+            echo "      Using CLI activation (fallback)..."
+            docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=false >/dev/null 2>&1 || true
+            sleep 1
+            docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=true >/dev/null 2>&1 || true
+            echo "      Workflow activated via CLI"
+        fi
     else
         echo "    ⚠️ Could not find workflow: $WORKFLOW_NAME"
     fi
 done
+
+# Clean up session cookies
+rm -f /tmp/n8n-cookies.txt
+
+# Restart n8n after workflow activation to ensure webhook registration (critical!)
+echo "  → Restarting n8n to apply webhook registrations..."
+docker restart n8n
+
+# Wait for n8n to be fully ready after restart
+echo "    Waiting for n8n to restart and be ready..."
+for i in {1..60}; do
+    sleep 5
+    if docker exec n8n n8n --version >/dev/null 2>&1; then
+        echo "    n8n is ready!"
+        break
+    fi
+done
+
+# Verify webhook registration is working (following easy_setup_v2.sh pattern)
+echo "  → Verifying webhook registration..."
+
+# Test the critical webhook endpoints
+echo "    Testing process-additional-sources endpoint..."
+TEST_RESPONSE=$(curl -s -X POST http://localhost:8000/functions/v1/process-additional-sources \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(grep ANON_KEY .env | cut -d'=' -f2)" \
+  -d '{
+    "type": "multiple-websites",
+    "notebookId": "test-notebook-id",
+    "urls": ["https://httpbin.org/status/200"],
+    "sourceIds": ["test-source-id"],
+    "timestamp": "'$(date -Iseconds)'"
+  }' 2>/dev/null)
+
+if echo "$TEST_RESPONSE" | grep -q '"success":true'; then
+    echo "    ✅ process-additional-sources webhook working correctly"
+else
+    echo "    ⚠️ process-additional-sources webhook may need attention"
+fi
+
+echo "    Testing generate-notebook-content endpoint..."
+TEST_RESPONSE=$(curl -s -X POST http://localhost:8000/functions/v1/generate-notebook-content \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(grep ANON_KEY .env | cut -d'=' -f2)" \
+  -d '{
+    "notebookId": "test-notebook-id",
+    "sourceType": "website"
+  }' 2>/dev/null)
+
+if echo "$TEST_RESPONSE" | grep -q '"success":true'; then
+    echo "    ✅ generate-notebook-content webhook working correctly"
+else
+    echo "    ⚠️ generate-notebook-content may need attention (this is often normal if no sources exist)"
+fi
+
+echo "  ✅ Webhook verification completed"
 
     echo -e "${GREEN}✓ InsightsLM setup complete - ready for use${NC}"
 fi
