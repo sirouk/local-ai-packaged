@@ -11,3 +11,17 @@ searxng/uwsgi*
 unified_credentials.txt
 __pycache__/
 **/__pycache__/
+
+# Deployment-generated files
+workflows/staging/
+workflows/sota/
+workflows/fixed/
+backup_*/
+sota-rag-deployment.flag
+sota-credential-ids.json
+DEPLOYMENT_SUMMARY*.txt
+
+supabase
+supabase/*
+sota-rag-deployment.flag
+DEPLOYMENT_SUMMARY.txt

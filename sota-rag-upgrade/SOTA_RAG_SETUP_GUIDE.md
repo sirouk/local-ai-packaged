@@ -143,11 +143,32 @@ LIGHTRAG_SERVER_URL=your_lightrag_server_url
 
 ## Frontend Compatibility
 
-The InsightsLM frontend is compatible with the SOTA RAG backend through:
-- Compatibility views (`documents_compat`)
-- Enhanced metadata support
-- Backward-compatible API endpoints
-- Graceful feature detection
+The enhanced deployment provides full compatibility between InsightsLM and SOTA RAG:
+
+### Independent System Operation
+- **Database Layer**: Separate schemas for complete independence (documents vs documents_v2)
+- **API Layer**: InsightsLM endpoints use original functions, SOTA RAG uses enhanced functions  
+- **Workflow Layer**: Both systems run with separate credentials and data stores
+- **Storage Layer**: Independent vector stores with different embedding dimensions
+
+### System Separation Benefits
+- **InsightsLM**: Uses 768-dimensional embeddings (nomic-embed-text) with original schema
+- **SOTA RAG**: Uses 1536-dimensional embeddings (text-embedding-3-small) with enhanced schema  
+- **No Interference**: Systems operate completely independently
+- **Preserve Functionality**: InsightsLM works exactly as before
+
+### Service URLs
+- **InsightsLM UI**: `http://localhost:3010` - Original notebook interface (independent operation)
+- **SOTA RAG Workflows**: `http://localhost:5678` - n8n workflow management (independent operation)  
+- **Supabase Studio**: `http://localhost:8000` - Database management for both systems
+
+### Future Integration
+For planned integration roadmap, see `SOTA_PLANS.md` which outlines how to:
+1. Route InsightsLM document processing through SOTA RAG workflows
+2. Enhance InsightsLM search with SOTA RAG capabilities
+3. Expose SOTA RAG advanced features through InsightsLM UI
+
+For current independent system details, see `INSIGHTSLM_SOTA_RAG_COMPATIBILITY.md`.
 
 ## Monitoring and Troubleshooting
 

@@ -1,4 +1,16 @@
 #!/bin/bash
+# Unified AI System Deployment Script
+# Supports three deployment modes:
+# 1. InsightsLM Legacy - Original notebook/content generation system
+# 2. SOTA RAG 2.1 - Advanced hybrid search, GraphRAG, multimodal capabilities  
+# 3. Both Systems - Dual independent deployment (default)
+#
+# Features:
+# - Automatic repository management (clone/update as needed)
+# - Smart validation based on deployment selection
+# - Independent database schemas and workflows
+# - Upgrade paths between deployment modes
+
 set -e
 
 cd "$(dirname "$0")"
@@ -10,7 +22,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}=== SOTA RAG Static Deployment Script ===${NC}"
+echo -e "${GREEN}=== Unified AI System Deployment Script ===${NC}"
+echo -e "${BLUE}Choose from: InsightsLM Legacy | SOTA RAG 2.1 | Both Systems${NC}"
 echo ""
 
 # Detect operating system first
@@ -191,23 +204,201 @@ echo -e "${YELLOW}=== Deployment Configuration ===${NC}"
 echo ""
 
 # 1. Deployment Mode Selection
-echo -e "${YELLOW}Deployment Mode:${NC}"
-echo "1. Phase 1: SOTA RAG with External APIs (OpenAI, Mistral, Cohere, Zep)"
-echo "2. Phase 2: Local-Only SOTA RAG (Ollama + local alternatives)"
+echo -e "${YELLOW}System Deployment Options:${NC}"
+echo "1. InsightsLM Legacy - Original notebook/content generation system only"
+echo "2. SOTA RAG 2.1 - Advanced hybrid search, GraphRAG, multimodal capabilities only"
+echo "3. Both Systems - InsightsLM + SOTA RAG dual deployment (independent operation)"
 echo ""
-read -p "Select deployment mode (press Enter for Phase 1): " -r DEPLOYMENT_MODE
-DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-1}
+read -p "Select deployment mode (press Enter for Both Systems): " -r DEPLOYMENT_MODE
+DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-3}
 
-if [[ "$DEPLOYMENT_MODE" != "1" && "$DEPLOYMENT_MODE" != "2" ]]; then
-    echo -e "${RED}Invalid selection. Please choose 1 or 2.${NC}"
+if [[ "$DEPLOYMENT_MODE" != "1" && "$DEPLOYMENT_MODE" != "2" && "$DEPLOYMENT_MODE" != "3" ]]; then
+    echo -e "${RED}Invalid selection. Please choose 1, 2, or 3.${NC}"
     exit 1
 fi
 
 if [ "$DEPLOYMENT_MODE" = "1" ]; then
-    echo -e "${GREEN}✓ Phase 1: SOTA RAG with External APIs selected${NC}"
-    USE_EXTERNAL_APIS=true
+    echo -e "${GREEN}✓ InsightsLM Legacy selected - Original system only${NC}"
+    DEPLOY_INSIGHTSLM=true
+    DEPLOY_SOTA_RAG=false
+    USE_EXTERNAL_APIS=false
+    echo -e "${BLUE}Note: This deploys only the original InsightsLM system with Ollama${NC}"
+elif [ "$DEPLOYMENT_MODE" = "2" ]; then
+    echo -e "${GREEN}✓ SOTA RAG 2.1 selected - Advanced system only${NC}"
+    DEPLOY_INSIGHTSLM=false
+    DEPLOY_SOTA_RAG=true
     
-    # API Key Collection
+    # For SOTA RAG, ask about external APIs vs local
+    echo ""
+    echo -e "${YELLOW}SOTA RAG API Configuration:${NC}"
+    echo "A. External APIs (OpenAI, Mistral, Cohere, Zep) - Fast setup, full features"
+    echo "B. Local-Only (Ollama + local alternatives) - Privacy focused, no API costs"
+    echo ""
+    read -p "Select API mode (A/b): " -r API_MODE
+    API_MODE=${API_MODE:-A}
+    
+    if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
+        USE_EXTERNAL_APIS=true
+        echo -e "${GREEN}✓ SOTA RAG with External APIs selected${NC}"
+    else
+        USE_EXTERNAL_APIS=false
+        echo -e "${GREEN}✓ SOTA RAG with Local-Only selected${NC}"
+    fi
+else
+    echo -e "${GREEN}✓ Both Systems selected - InsightsLM + SOTA RAG dual deployment${NC}"
+    DEPLOY_INSIGHTSLM=true
+    DEPLOY_SOTA_RAG=true
+    
+    # For dual deployment, ask about SOTA API mode
+    echo ""
+    echo -e "${YELLOW}SOTA RAG API Configuration (InsightsLM will use local Ollama):${NC}"
+    echo "A. External APIs for SOTA RAG (OpenAI, Mistral, Cohere, Zep)"
+    echo "B. Local-Only for both systems (Ollama + local alternatives)"
+    echo ""
+    read -p "Select API mode (A/b): " -r API_MODE
+    API_MODE=${API_MODE:-A}
+    
+    if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
+        USE_EXTERNAL_APIS=true
+        echo -e "${GREEN}✓ Dual System: InsightsLM (Local) + SOTA RAG (External APIs)${NC}"
+    else
+        USE_EXTERNAL_APIS=false
+        echo -e "${GREEN}✓ Dual System: Both using local models and alternatives${NC}"
+    fi
+fi
+
+# =============================================================================
+# REPOSITORY MANAGEMENT (After deployment mode selection)
+# =============================================================================
+
+echo ""
+echo -e "${YELLOW}=== Checking and Updating Required Repositories ===${NC}"
+
+# Repository URLs (matching easy_setup_v2.sh)
+INSIGHTS_LM_REPO="https://github.com/sirouk/insights-lm-local-package.git"
+SUPABASE_REPO="https://github.com/sirouk/supabase.git"
+
+# Check insights-lm-local-package (needed for InsightsLM deployment)
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo "Checking insights-lm-local-package repository..."
+    if [ -d "insights-lm-local-package/.git" ]; then
+        echo "  → Found existing git repository - updating..."
+        cd insights-lm-local-package
+        git pull >/dev/null 2>&1 || echo "    Warning: Could not update repository"
+        cd ..
+        echo "  ✅ insights-lm-local-package updated"
+    elif [ -d "insights-lm-local-package" ]; then
+        echo "  ✅ insights-lm-local-package directory exists (not a git repo)"
+    else
+        echo "  → Cloning insights-lm-local-package repository..."
+        git clone "$INSIGHTS_LM_REPO" >/dev/null 2>&1 || {
+            echo -e "${RED}Error: Failed to clone insights-lm-local-package${NC}"
+            echo "Please manually clone: $INSIGHTS_LM_REPO"
+            exit 1
+        }
+        echo "  ✅ insights-lm-local-package cloned"
+    fi
+fi
+
+# Check supabase repository (needed for both deployments)
+echo "Checking supabase repository..."
+if [ -d "supabase/.git" ]; then
+    echo "  → Found existing git repository - updating..."
+    cd supabase
+    git pull >/dev/null 2>&1 || echo "    Warning: Could not update repository"
+    cd ..
+    echo "  ✅ supabase updated"
+elif [ ! -d "supabase/docker" ]; then
+    echo "  → Cloning supabase repository (sparse checkout)..."
+    git clone --filter=blob:none --no-checkout "$SUPABASE_REPO" >/dev/null 2>&1 || {
+        echo -e "${RED}Error: Failed to clone supabase${NC}"
+        echo "Please manually clone: $SUPABASE_REPO"
+        exit 1
+    }
+    cd supabase
+    git sparse-checkout init --cone >/dev/null 2>&1
+    git sparse-checkout set docker >/dev/null 2>&1
+    git checkout master >/dev/null 2>&1
+    cd ..
+    echo "  ✅ supabase cloned and configured"
+else
+    echo "  ✅ supabase/docker directory exists"
+fi
+
+echo -e "${GREEN}✓ Required repositories verified and up to date${NC}"
+
+# Validate required files exist for selected deployment mode
+echo ""
+echo -e "${YELLOW}=== Validating Deployment Requirements ===${NC}"
+
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    # Check InsightsLM requirements
+    if [ ! -f "insights-lm-local-package/supabase-migration.sql" ]; then
+        echo -e "${RED}Error: InsightsLM migration file not found${NC}"
+        echo "Expected: insights-lm-local-package/supabase-migration.sql"
+        exit 1
+    fi
+    
+    if [ ! -f "insights-lm-local-package/n8n/Local_Import_Insights_LM_Workflows.json" ]; then
+        echo -e "${RED}Error: InsightsLM workflow import file not found${NC}"
+        echo "Expected: insights-lm-local-package/n8n/Local_Import_Insights_LM_Workflows.json"
+        exit 1
+    fi
+    
+    if [ ! -d "insights-lm-local-package/supabase-functions" ]; then
+        echo -e "${RED}Error: InsightsLM edge functions not found${NC}"
+        echo "Expected: insights-lm-local-package/supabase-functions/"
+        exit 1
+    fi
+    
+    echo "  ✅ InsightsLM requirements validated"
+fi
+
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    # Check SOTA RAG requirements  
+    if [ ! -f "sota-rag-upgrade/src/TheAIAutomators.com - RAG SOTA - v2.1 BLUEPRINT (1).json" ]; then
+        echo -e "${RED}Error: SOTA RAG main workflow not found${NC}"
+        echo "Expected: sota-rag-upgrade/src/TheAIAutomators.com - RAG SOTA - v2.1 BLUEPRINT (1).json"
+        exit 1
+    fi
+    
+    if [ ! -f "sota-rag-upgrade/src/hybrid_search_database_function.txt" ]; then
+        echo -e "${RED}Error: SOTA RAG database functions not found${NC}"
+        echo "Expected: sota-rag-upgrade/src/hybrid_search_database_function.txt"
+        exit 1
+    fi
+    
+    echo "  ✅ SOTA RAG requirements validated"
+fi
+
+if [ ! -d "supabase/docker" ]; then
+    echo -e "${RED}Error: Supabase docker configuration not found${NC}"
+    echo "Expected: supabase/docker/ directory"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ All deployment requirements validated${NC}"
+
+# Show what will be deployed
+echo ""
+echo -e "${BLUE}=== Deployment Summary ===${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}📝 Systems to Deploy: InsightsLM Legacy + SOTA RAG 2.1${NC}"
+    echo -e "   → InsightsLM: Original notebook/content generation (768-dim vectors)"
+    echo -e "   → SOTA RAG: Advanced hybrid search, GraphRAG, multimodal (1536-dim vectors)"
+    echo -e "   → Integration: Independent operation with future bridge workflows planned"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${GREEN}📝 System to Deploy: InsightsLM Legacy${NC}"
+    echo -e "   → Complete original functionality with local Ollama"
+    echo -e "   → Upgrade path: Re-run script and select 'Both Systems' to add SOTA RAG"
+elif [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}📝 System to Deploy: SOTA RAG 2.1${NC}"
+    echo -e "   → Advanced RAG with $([ "$USE_EXTERNAL_APIS" = true ] && echo "external APIs" || echo "local models")"
+    echo -e "   → Upgrade path: Re-run script and select 'Both Systems' to add InsightsLM UI"
+fi
+
+# API Key Collection (only if using external APIs)
+if [ "$USE_EXTERNAL_APIS" = true ]; then
     echo ""
     echo -e "${YELLOW}API Configuration Required:${NC}"
     echo "You'll need API keys for:"
@@ -279,20 +470,25 @@ if [ "$DEPLOYMENT_MODE" = "1" ]; then
     fi
     
     echo -e "${GREEN}✓ API keys collected${NC}"
-else
-    echo -e "${GREEN}✓ Phase 2: Local-Only SOTA RAG selected${NC}"
-    USE_EXTERNAL_APIS=false
-    echo -e "${YELLOW}Note: This will use Ollama for all LLM operations and local alternatives${NC}"
 fi
 
 # 2. Model Configuration
 echo ""
 echo -e "${YELLOW}Model Configuration:${NC}"
-if [ "$USE_EXTERNAL_APIS" = true ]; then
+
+# Set defaults based on deployment mode and API selection
+if [ "$DEPLOYMENT_MODE" = "1" ]; then
+    # InsightsLM Legacy - always uses local models
+    DEFAULT_MAIN_MODEL="qwen3:8b-q4_K_M"
+    DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
+    echo -e "InsightsLM Legacy mode - using local Ollama models"
+elif [ "$USE_EXTERNAL_APIS" = true ]; then
+    # SOTA RAG with external APIs
     DEFAULT_MAIN_MODEL="gpt-4o"
     DEFAULT_EMBEDDING_MODEL="text-embedding-3-small"
     echo -e "External API mode - using OpenAI models"
 else
+    # SOTA RAG local-only or Both systems local-only
     DEFAULT_MAIN_MODEL="qwen3:8b-q4_K_M"
     DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
     echo -e "Local mode - using Ollama models"
@@ -304,22 +500,32 @@ MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_MAIN_MODEL}
 read -p "Enter embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
 EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
 
-# 3. Feature Configuration
-echo ""
-echo -e "${YELLOW}SOTA RAG Features:${NC}"
-echo "Configure which advanced features to enable:"
+# 3. SOTA RAG Feature Configuration (only if deploying SOTA RAG)
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo ""
+    echo -e "${YELLOW}SOTA RAG Advanced Features:${NC}"
+    echo "Configure which advanced features to enable:"
 
-read -p "Enable GraphRAG/LightRAG? (Y/n): " -r ENABLE_LIGHTRAG
-ENABLE_LIGHTRAG=${ENABLE_LIGHTRAG:-Y}
+    read -p "Enable GraphRAG/LightRAG? (Y/n): " -r ENABLE_LIGHTRAG
+    ENABLE_LIGHTRAG=${ENABLE_LIGHTRAG:-Y}
 
-read -p "Enable Multimodal RAG? (Y/n): " -r ENABLE_MULTIMODAL
-ENABLE_MULTIMODAL=${ENABLE_MULTIMODAL:-Y}
+    read -p "Enable Multimodal RAG? (Y/n): " -r ENABLE_MULTIMODAL
+    ENABLE_MULTIMODAL=${ENABLE_MULTIMODAL:-Y}
 
-read -p "Enable Contextual Embeddings? (Y/n): " -r ENABLE_CONTEXTUAL
-ENABLE_CONTEXTUAL=${ENABLE_CONTEXTUAL:-Y}
+    read -p "Enable Contextual Embeddings? (Y/n): " -r ENABLE_CONTEXTUAL
+    ENABLE_CONTEXTUAL=${ENABLE_CONTEXTUAL:-Y}
 
-read -p "Enable Long-term Memory (Zep)? (Y/n): " -r ENABLE_LONGTERM_MEMORY
-ENABLE_LONGTERM_MEMORY=${ENABLE_LONGTERM_MEMORY:-Y}
+    read -p "Enable Long-term Memory (Zep)? (Y/n): " -r ENABLE_LONGTERM_MEMORY
+    ENABLE_LONGTERM_MEMORY=${ENABLE_LONGTERM_MEMORY:-Y}
+else
+    # InsightsLM only - no SOTA features
+    ENABLE_LIGHTRAG=N
+    ENABLE_MULTIMODAL=N
+    ENABLE_CONTEXTUAL=N
+    ENABLE_LONGTERM_MEMORY=N
+    echo ""
+    echo -e "${BLUE}InsightsLM Legacy mode - SOTA RAG features disabled${NC}"
+fi
 
 # 4. Network Configuration
 echo ""
@@ -935,14 +1141,18 @@ echo -e "${YELLOW}=== Database Migration to SOTA RAG Schema ===${NC}"
 # Now that services are running with correct credentials, proceed with migration
 echo "Services running with new credentials - proceeding with migration..."
 
-# Use the proven migration AND SOTA RAG specific database setup
-echo "Running database migration..."
-docker cp insights-lm-local-package/supabase-migration.sql supabase-db:/tmp/migration.sql
-docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/migration.sql >/dev/null 2>&1 || true
+# Database migration based on deployment mode
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo "Running InsightsLM database migration..."
+    docker cp insights-lm-local-package/supabase-migration.sql supabase-db:/tmp/migration.sql
+    docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/migration.sql >/dev/null 2>&1 || true
+    echo "    ✓ InsightsLM database schema applied"
+fi
 
-# Apply SOTA RAG specific database tables (idempotent version)
-echo "  → Applying SOTA RAG database tables..."
-cat > /tmp/sota_tables_idempotent.sql << 'EOF'
+# Apply SOTA RAG specific database tables (only if deploying SOTA RAG)
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo "  → Applying SOTA RAG database tables..."
+    cat > /tmp/sota_tables_idempotent.sql << 'EOF'
 -- SOTA RAG Database Tables (Idempotent Version)
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -995,24 +1205,42 @@ WHERE NOT EXISTS (SELECT 1 FROM public.metadata_fields WHERE metadata_name = 'de
 INSERT INTO public.metadata_fields (metadata_name, allowed_values) 
 SELECT 'document_date', 'Datetime format: YYYY-MM-DD'
 WHERE NOT EXISTS (SELECT 1 FROM public.metadata_fields WHERE metadata_name = 'document_date');
+
+-- ============================================================================
+-- SEPARATE SYSTEM APPROACH: InsightsLM and SOTA RAG run independently
+-- ============================================================================
+
+-- Note: InsightsLM tables and functions are created by the migration above
+-- SOTA RAG tables are created here
+-- Future: Plan to integrate InsightsLM frontend → SOTA RAG backend processing
 EOF
 
-docker cp /tmp/sota_tables_idempotent.sql supabase-db:/tmp/sota_tables.sql
-docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/sota_tables.sql >/dev/null 2>&1 || true
-echo "    ✓ SOTA RAG database tables applied (idempotent)"
+    docker cp /tmp/sota_tables_idempotent.sql supabase-db:/tmp/sota_tables.sql
+    docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/sota_tables.sql >/dev/null 2>&1 || true
+    echo "    ✓ SOTA RAG database tables applied - systems remain separate (idempotent)"
 
-# Apply SOTA RAG specific database functions (from sota-rag-setup.md)
-echo "  → Applying SOTA RAG database functions..."
-if [ -f "sota-rag-upgrade/src/hybrid_search_database_function.txt" ]; then
-    docker cp "sota-rag-upgrade/src/hybrid_search_database_function.txt" supabase-db:/tmp/sota_functions.sql
-    docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/sota_functions.sql >/dev/null 2>&1 || true
-    echo "    ✓ SOTA RAG database functions applied"
+    # Apply SOTA RAG specific database functions (from sota-rag-setup.md)
+    echo "  → Applying SOTA RAG database functions..."
+    if [ -f "sota-rag-upgrade/src/hybrid_search_database_function.txt" ]; then
+        docker cp "sota-rag-upgrade/src/hybrid_search_database_function.txt" supabase-db:/tmp/sota_functions.sql
+        docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/sota_functions.sql >/dev/null 2>&1 || true
+        echo "    ✓ SOTA RAG database functions applied"
+    fi
+    
+    echo -e "${GREEN}✓ SOTA RAG database schema applied${NC}"
 fi
 
-echo -e "${GREEN}✓ Database migrated to SOTA RAG schema${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ Database migration complete - both schemas operational${NC}"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${GREEN}✓ InsightsLM database migration complete${NC}"
+elif [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ SOTA RAG database migration complete${NC}"
+fi
 
-# Create read-only user as required by sota-rag-setup.md (idempotent version)
-echo -e "${YELLOW}Creating read-only database user (required by SOTA RAG)...${NC}"
+# Create read-only user as required by sota-rag-setup.md (only if deploying SOTA RAG)
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${YELLOW}Creating read-only database user (required by SOTA RAG)...${NC}"
 cat > /tmp/readonly_user_idempotent.sql << 'EOF'
 -- Create read-only user (idempotent version)
 DO $$
@@ -1042,50 +1270,69 @@ DROP POLICY IF EXISTS "Read access for readonly user" ON documents_v2;
 CREATE POLICY "Read access for readonly user" ON documents_v2 FOR SELECT TO readonly USING (true);
 EOF
 
-echo "  → Deploying read-only user configuration..."
-docker cp /tmp/readonly_user_idempotent.sql supabase-db:/tmp/readonly_user.sql
-docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/readonly_user.sql >/dev/null 2>&1 || true
-echo -e "${GREEN}✓ Read-only database user created (idempotent)${NC}"
-
-# Deploy SOTA RAG specific edge functions (idempotent)
-echo -e "${YELLOW}Deploying SOTA RAG edge functions...${NC}"
-
-# First copy base functions from insights-lm-local-package
-mkdir -p ./supabase/docker/volumes/functions/
-cp -rf ./insights-lm-local-package/supabase-functions/* ./supabase/docker/volumes/functions/
-
-# Check if we need to update with enhanced SOTA RAG edge functions
-echo "  → Checking edge function versions..."
-NEEDS_UPDATE=false
-
-# Check vector-search function
-if [ ! -f "./supabase/docker/volumes/functions/vector-search/index.ts" ] || ! grep -q "jsr:@supabase" "./supabase/docker/volumes/functions/vector-search/index.ts" 2>/dev/null; then
-    echo "    → Updating vector-search with enhanced SOTA RAG version..."
-    mkdir -p ./supabase/docker/volumes/functions/vector-search
-    cp "sota-rag-upgrade/src/Edge Function - Vector Search (2).txt" ./supabase/docker/volumes/functions/vector-search/index.ts
-    NEEDS_UPDATE=true
-else
-    echo "    ✓ vector-search already has enhanced SOTA RAG version"
+    echo "  → Deploying read-only user configuration..."
+    docker cp /tmp/readonly_user_idempotent.sql supabase-db:/tmp/readonly_user.sql
+    docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/readonly_user.sql >/dev/null 2>&1 || true
+    echo -e "${GREEN}✓ Read-only database user created (idempotent)${NC}"
 fi
 
-# Check hybrid-search function
-if [ ! -f "./supabase/docker/volumes/functions/hybrid-search/index.ts" ] || ! grep -q "jsr:@supabase" "./supabase/docker/volumes/functions/hybrid-search/index.ts" 2>/dev/null; then
-    echo "    → Updating hybrid-search with enhanced SOTA RAG version..."
-    mkdir -p ./supabase/docker/volumes/functions/hybrid-search
-    cp "sota-rag-upgrade/src/Edge Function - Hybrid Search (3).txt" ./supabase/docker/volumes/functions/hybrid-search/index.ts
-    NEEDS_UPDATE=true
-else
-    echo "    ✓ hybrid-search already has enhanced SOTA RAG version"
+# Deploy edge functions based on deployment mode
+echo -e "${YELLOW}Deploying edge functions...${NC}"
+
+# Always copy base InsightsLM functions if deploying InsightsLM
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo "  → Deploying InsightsLM edge functions..."
+    mkdir -p ./supabase/docker/volumes/functions/
+    cp -rf ./insights-lm-local-package/supabase-functions/* ./supabase/docker/volumes/functions/
+    echo "    ✓ InsightsLM edge functions deployed"
 fi
 
-# Restart edge functions only if updated
-if [ "$NEEDS_UPDATE" = true ]; then
-    echo "  → Restarting edge functions to load updates..."
-    docker restart supabase-edge-functions >/dev/null 2>&1
-    sleep 5
-fi
+# Deploy SOTA RAG specific edge functions if deploying SOTA RAG
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo "  → Deploying SOTA RAG edge functions..."
+    
+    # Ensure base functions directory exists
+    mkdir -p ./supabase/docker/volumes/functions/
+    
+    # Copy base functions if not already done by InsightsLM deployment
+    if [ "$DEPLOY_INSIGHTSLM" = false ]; then
+        cp -rf ./insights-lm-local-package/supabase-functions/* ./supabase/docker/volumes/functions/
+        echo "    ✓ Base InsightsLM functions copied for SOTA RAG requirements"
+    fi
 
-echo -e "${GREEN}✓ SOTA RAG edge functions deployed (idempotent)${NC}"
+    # Check if we need to update with enhanced SOTA RAG edge functions
+    echo "  → Checking edge function versions..."
+    NEEDS_UPDATE=false
+
+    # Check vector-search function
+    if [ ! -f "./supabase/docker/volumes/functions/vector-search/index.ts" ] || ! grep -q "jsr:@supabase" "./supabase/docker/volumes/functions/vector-search/index.ts" 2>/dev/null; then
+        echo "    → Updating vector-search with enhanced SOTA RAG version..."
+        mkdir -p ./supabase/docker/volumes/functions/vector-search
+        cp "sota-rag-upgrade/src/Edge Function - Vector Search (2).txt" ./supabase/docker/volumes/functions/vector-search/index.ts
+        NEEDS_UPDATE=true
+    else
+        echo "    ✓ vector-search already has enhanced SOTA RAG version"
+    fi
+
+    # Check hybrid-search function
+    if [ ! -f "./supabase/docker/volumes/functions/hybrid-search/index.ts" ] || ! grep -q "jsr:@supabase" "./supabase/docker/volumes/functions/hybrid-search/index.ts" 2>/dev/null; then
+        echo "    → Updating hybrid-search with enhanced SOTA RAG version..."
+        mkdir -p ./supabase/docker/volumes/functions/hybrid-search
+        cp "sota-rag-upgrade/src/Edge Function - Hybrid Search (3).txt" ./supabase/docker/volumes/functions/hybrid-search/index.ts
+        NEEDS_UPDATE=true
+    else
+        echo "    ✓ hybrid-search already has enhanced SOTA RAG version"
+    fi
+
+    # Restart edge functions only if updated
+    if [ "$NEEDS_UPDATE" = true ]; then
+        echo "  → Restarting edge functions to load updates..."
+        docker restart supabase-edge-functions >/dev/null 2>&1
+        sleep 5
+    fi
+
+    echo -e "${GREEN}✓ SOTA RAG edge functions deployed (idempotent)${NC}"
+fi
 
 # API keys are now configured in the earlier ENVIRONMENT CONFIGURATION section
 
@@ -1093,14 +1340,15 @@ echo -e "${GREEN}✓ SOTA RAG edge functions deployed (idempotent)${NC}"
 # WORKFLOW PREPARATION
 # =============================================================================
 
-echo ""
-echo -e "${YELLOW}=== Preparing SOTA RAG Workflows ===${NC}"
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo ""
+    echo -e "${YELLOW}=== Preparing SOTA RAG Workflows ===${NC}"
 
-# Create workflows directory for staging
-mkdir -p workflows/staging
+    # Create workflows directory for staging
+    mkdir -p workflows/staging
 
-# Copy SOTA RAG workflows to staging (Knowledge Graph is always needed)
-echo "Copying SOTA RAG v2.1 workflows..."
+    # Copy SOTA RAG workflows to staging (Knowledge Graph is always needed)
+    echo "Copying SOTA RAG v2.1 workflows..."
 cp "sota-rag-upgrade/src/Knowledge Graph Updates - SOTA RAG Blueprint - v1.0 BLUEPRINT (1).json" workflows/staging/knowledge-graph-workflow.json
 cp "sota-rag-upgrade/src/TheAIAutomators.com - RAG SOTA - v2.1 BLUEPRINT (1).json" workflows/staging/main-rag-workflow.json
 cp "sota-rag-upgrade/src/Multimodal RAG - TheAIAutomators - SOTA RAG Sub-workflow - 1.0 BLUEPRINT.json" workflows/staging/multimodal-rag-workflow.json
@@ -1221,11 +1469,11 @@ EOF
 
     python3 /tmp/configure_workflows.py
     echo -e "${GREEN}✓ Workflows configured for deployment${NC}"
-    
-
-
 else
     echo -e "${YELLOW}Database not running - will start services first${NC}"
+fi
+
+    echo -e "${GREEN}✓ SOTA RAG workflows prepared${NC}"
 fi
 
 # =============================================================================
@@ -1233,19 +1481,25 @@ fi
 # =============================================================================
 
 echo ""
-echo -e "${YELLOW}=== Setting up SOTA RAG Database Functions ===${NC}"
+echo -e "${YELLOW}=== Database Functions Confirmation ===${NC}"
 
 # Database functions are already handled by the migration above
 echo "Database functions deployed via migration..."
 
-echo -e "${GREEN}✓ Database functions deployed${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ Both InsightsLM and SOTA RAG database functions deployed${NC}"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${GREEN}✓ InsightsLM database functions deployed${NC}"
+elif [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ SOTA RAG database functions deployed${NC}"
+fi
 
 # =============================================================================
 # WORKFLOW DEPLOYMENT
 # =============================================================================
 
 echo ""
-echo -e "${YELLOW}=== Deploying SOTA RAG Workflows ===${NC}"
+echo -e "${YELLOW}=== Workflow Deployment Status ===${NC}"
 
 # Wait for n8n to be ready
 echo "Waiting for n8n to be ready..."
@@ -1257,24 +1511,31 @@ for i in {1..60}; do
     sleep 5
 done
 
-# Import workflows
-echo "Importing SOTA RAG workflows..."
-
-# Workflow import is now handled after credential mapping (see SOTA RAG import section below)
-echo "SOTA RAG workflows will be imported after credentials are processed..."
-echo "Existing InsightsLM workflows preserved for backward compatibility"
+# Workflow import status
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo "Both InsightsLM and SOTA RAG workflows will be imported..."
+    echo "Systems will operate independently with separate credentials"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo "InsightsLM workflows will be imported..."
+    echo "Original InsightsLM functionality preserved"
+elif [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo "SOTA RAG workflows will be imported..."
+    echo "Advanced RAG capabilities will be available"
+fi
 
 # Save unified credentials for user reference
 cat > unified_credentials.txt << EOF
-SOTA RAG Unified Login Credentials:
-===================================
+System Login Credentials:
+========================
 Email: ${UNIFIED_EMAIL}
 Password: ${UNIFIED_PASSWORD}
 
+Deployed Systems: $([ "$DEPLOY_INSIGHTSLM" = true ] && echo -n "InsightsLM ") $([ "$DEPLOY_SOTA_RAG" = true ] && echo -n "SOTA-RAG")
+
 Service URLs:
 - Supabase Studio: http://${ACCESS_HOST}:8000
-- n8n Workflows: http://${ACCESS_HOST}:5678
-- InsightsLM UI: http://${ACCESS_HOST}:3010
+- n8n Workflows: http://${ACCESS_HOST}:5678$([ "$DEPLOY_INSIGHTSLM" = true ] && echo "
+- InsightsLM UI: http://${ACCESS_HOST}:3010")
 
 Additional Services:
 - Open WebUI: http://${ACCESS_HOST}:8080  
@@ -1283,17 +1544,24 @@ EOF
 
 
 
-echo -e "${GREEN}✓ SOTA RAG workflows deployed${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ Both system workflows will be deployed${NC}"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${GREEN}✓ InsightsLM workflows will be deployed${NC}"
+elif [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}✓ SOTA RAG workflows will be deployed${NC}"
+fi
 
 # =============================================================================
 # FRONTEND COMPATIBILITY
 # =============================================================================
 
-echo ""
-echo -e "${YELLOW}=== Ensuring Frontend Compatibility ===${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo ""
+    echo -e "${YELLOW}=== Ensuring Frontend Compatibility ===${NC}"
 
-# Update InsightsLM frontend build args to include new environment variables
-if [ -f "insights-lm-local-package/Dockerfile" ]; then
+    # Update InsightsLM frontend build args to include new environment variables
+    if [ -f "insights-lm-local-package/Dockerfile" ]; then
     # Add new build args for SOTA RAG features
     if ! grep -q "ARG ENABLE_LIGHTRAG" insights-lm-local-package/Dockerfile; then
         cp_sed '/ARG VITE_SUPABASE_ANON_KEY/a\
@@ -1318,7 +1586,8 @@ if yq eval '.services | has("insightslm")' docker-compose.yml | grep -q "true"; 
     echo "  ✓ Docker compose updated with SOTA feature flags"
 fi
 
-echo -e "${GREEN}✓ Frontend compatibility configured${NC}"
+    echo -e "${GREEN}✓ Frontend compatibility configured${NC}"
+fi
 
 # =============================================================================
 # FINAL CONFIGURATION
@@ -1327,8 +1596,9 @@ echo -e "${GREEN}✓ Frontend compatibility configured${NC}"
 echo ""
 echo -e "${YELLOW}=== Final Configuration ===${NC}"
 
-# Create SOTA RAG credential templates
-cat > workflows/credential-templates.json << EOF
+# Create SOTA RAG credential templates (only if deploying SOTA RAG)
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    cat > workflows/credential-templates.json << EOF
 {
   "openai_api": {
     "name": "OpenAI account SOTA",
@@ -1362,33 +1632,43 @@ cat > workflows/credential-templates.json << EOF
   }
 }
 EOF
+fi
 
 # Create deployment summary
 cat > DEPLOYMENT_SUMMARY.txt << EOF
-SOTA RAG Deployment Summary
-===========================
+System Deployment Summary
+=========================
 
-Deployment Mode: Phase $DEPLOYMENT_MODE
-$([ "$USE_EXTERNAL_APIS" = true ] && echo "Using External APIs" || echo "Local-Only Deployment")
+Deployment Mode: $([ "$DEPLOYMENT_MODE" = "1" ] && echo "InsightsLM Legacy Only" || ([ "$DEPLOYMENT_MODE" = "2" ] && echo "SOTA RAG 2.1 Only" || echo "Both Systems (Dual Deployment)"))
+$([ "$USE_EXTERNAL_APIS" = true ] && echo "API Mode: External APIs" || echo "API Mode: Local-Only")
+Systems Deployed: $([ "$DEPLOY_INSIGHTSLM" = true ] && echo -n "InsightsLM ") $([ "$DEPLOY_SOTA_RAG" = true ] && echo -n "SOTA-RAG")
 
 Models:
 - Main: $MAIN_MODEL  
 - Embedding: $EMBEDDING_MODEL
 
-Features Enabled:
-- GraphRAG/LightRAG: $([[ "$ENABLE_LIGHTRAG" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
-- Multimodal RAG: $([[ "$ENABLE_MULTIMODAL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No") 
-- Contextual Embeddings: $([[ "$ENABLE_CONTEXTUAL" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
-- Long-term Memory: $([[ "$ENABLE_LONGTERM_MEMORY" =~ ^[Yy]$ ]] && echo "Yes" || echo "No")
+$([ "$DEPLOY_SOTA_RAG" = true ] && echo "
+SOTA RAG Features Enabled:
+- GraphRAG/LightRAG: $([[ \"\$ENABLE_LIGHTRAG\" =~ ^[Yy]$ ]] && echo \"Yes\" || echo \"No\")
+- Multimodal RAG: $([[ \"\$ENABLE_MULTIMODAL\" =~ ^[Yy]$ ]] && echo \"Yes\" || echo \"No\") 
+- Contextual Embeddings: $([[ \"\$ENABLE_CONTEXTUAL\" =~ ^[Yy]$ ]] && echo \"Yes\" || echo \"No\")
+- Long-term Memory: $([[ \"\$ENABLE_LONGTERM_MEMORY\" =~ ^[Yy]$ ]] && echo \"Yes\" || echo \"No\")")
 
 Access URLs:
 - Supabase: http://${ACCESS_HOST}:8000
-- n8n: http://${ACCESS_HOST}:5678  
-- InsightsLM: http://${ACCESS_HOST}:3010
+- n8n: http://${ACCESS_HOST}:5678$([ "$DEPLOY_INSIGHTSLM" = true ] && echo "  
+- InsightsLM: http://${ACCESS_HOST}:3010")
 
-Database Schema: Migrated to SOTA RAG (documents_v2, record_manager_v2, etc.)
-Edge Functions: Enhanced SOTA RAG versions with jsr imports & better validation
-Workflows: SOTA RAG workflows imported and configured
+Database Schema: $([ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ] && echo "Dual system approach - both schemas operational" || ([ "$DEPLOY_INSIGHTSLM" = true ] && echo "InsightsLM schema only" || echo "SOTA RAG schema only"))$([ "$DEPLOY_SOTA_RAG" = true ] && echo "
+  - SOTA RAG: documents_v2 (vector 1536), record_manager_v2, metadata_fields, tabular_document_rows")$([ "$DEPLOY_INSIGHTSLM" = true ] && echo "
+  - InsightsLM: documents (vector 768), notebooks, sources, notes, profiles, n8n_chat_histories")$([ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ] && echo "
+  - Separation: Systems operate independently with their own tables/functions")
+
+Edge Functions: $([ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ] && echo "Both SOTA RAG enhanced functions + all original InsightsLM functions" || ([ "$DEPLOY_INSIGHTSLM" = true ] && echo "Original InsightsLM functions" || echo "Enhanced SOTA RAG functions (vector-search, hybrid-search)"))
+
+Workflows: $([ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ] && echo "Both systems fully functional with separate credentials" || ([ "$DEPLOY_INSIGHTSLM" = true ] && echo "InsightsLM workflows active" || echo "SOTA RAG workflows active"))$([ "$DEPLOY_SOTA_RAG" = true ] && echo "
+  - SOTA RAG: Main workflow, Knowledge Graph, Multimodal (if enabled)")$([ "$DEPLOY_INSIGHTSLM" = true ] && echo "
+  - InsightsLM: Chat, Podcast Generation, Process Sources, Upsert to Vector, Generate Details")
 Read-only User: Created with proper security permissions
 Idempotent: Script can be run multiple times safely
 Reset Option: Available via interactive prompt (defaults to N for safety)
@@ -1399,10 +1679,21 @@ Backup Location: $BACKUP_DIR
 EOF
 
 # Add deployment-specific next steps to summary
-if [ "$USE_EXTERNAL_APIS" = true ]; then
+if [ "$DEPLOYMENT_MODE" = "1" ]; then
     cat >> DEPLOYMENT_SUMMARY.txt << EOF
 
-Next Steps for External API Mode:
+Next Steps for InsightsLM Legacy:
+1. Access InsightsLM at http://${ACCESS_HOST}:3010
+2. Create notebooks and upload documents
+3. Test chat, podcast generation, and content processing
+4. All functionality exactly as original InsightsLM
+5. Upgrade path: Run easy_deploy.sh again and select 'Both Systems' to add SOTA RAG
+
+EOF
+elif [ "$DEPLOYMENT_MODE" = "2" ] && [ "$USE_EXTERNAL_APIS" = true ]; then
+    cat >> DEPLOYMENT_SUMMARY.txt << EOF
+
+Next Steps for SOTA RAG 2.1 with External APIs:
 1. Edit .env file and add your API keys:
    - OPENAI_API_KEY
    - MISTRAL_API_KEY  
@@ -1413,14 +1704,60 @@ Next Steps for External API Mode:
 
 3. Restart services: python3 start_services.py --profile $PROFILE --environment private
 
-4. Access n8n at http://${ACCESS_HOST}:5678 to activate workflows
+4. Access n8n at http://${ACCESS_HOST}:5678 to activate SOTA RAG workflows
+5. Test advanced RAG features: hybrid search, contextual embeddings, GraphRAG
+6. Add InsightsLM: Run easy_deploy.sh again and select 'Both Systems' to add notebook interface
 
-5. Test the new SOTA RAG capabilities
 EOF
-else
+elif [ "$DEPLOYMENT_MODE" = "2" ] && [ "$USE_EXTERNAL_APIS" = false ]; then
     cat >> DEPLOYMENT_SUMMARY.txt << EOF
 
-Next Steps for Local-Only Mode:
+Next Steps for SOTA RAG 2.1 Local-Only:
+1. Ollama models configured: $MAIN_MODEL, $EMBEDDING_MODEL
+2. Configure local alternatives for external services:
+   - OCR processing (replace Mistral API with local OCR)
+   - Reranking (replace Cohere API with local reranker)
+   - Long-term memory (replace Zep API with local memory)
+3. Access n8n at http://${ACCESS_HOST}:5678 to activate SOTA RAG workflows
+4. Test local SOTA RAG features
+5. Add InsightsLM: Run easy_deploy.sh again and select 'Both Systems' to add notebook interface
+
+EOF
+else
+    # Both systems deployment
+    if [ "$USE_EXTERNAL_APIS" = true ]; then
+        cat >> DEPLOYMENT_SUMMARY.txt << EOF
+
+Next Steps for Dual System (External APIs):
+1. Edit .env file and add your API keys:
+   - OPENAI_API_KEY
+   - MISTRAL_API_KEY  
+   - COHERE_API_KEY
+   - ZEP_API_KEY
+   
+2. If using LightRAG, set LIGHTRAG_SERVER_URL in .env
+
+3. Restart services: python3 start_services.py --profile $PROFILE --environment private
+
+4. Access n8n at http://${ACCESS_HOST}:5678 to verify workflows are active
+
+5. Test both systems independently:
+   - InsightsLM: Access http://${ACCESS_HOST}:3010 for notebook creation (uses original 768-dim vectors)
+   - SOTA RAG: Use n8n workflows for advanced RAG features (uses 1536-dim vectors)
+   
+6. Verify separation:
+   - InsightsLM operates with original database tables and functions
+   - SOTA RAG operates with enhanced v2 tables and functions
+   - Both systems functional but independent (integration planned for future)
+
+7. Plan integration: See SOTA_PLANS.md for roadmap to enhance InsightsLM with SOTA capabilities
+
+EOF
+    else
+        # Both systems with local-only mode
+        cat >> DEPLOYMENT_SUMMARY.txt << EOF
+
+Next Steps for Dual System (Local-Only):
 1. Ollama models configured:
    - Main model: $MAIN_MODEL ($([ "$IS_MACOS" = true ] && echo "running on host" || echo "running in Docker"))
    - Embedding model: $EMBEDDING_MODEL ($([ "$IS_MACOS" = true ] && echo "running on host" || echo "running in Docker"))
@@ -1429,14 +1766,23 @@ Next Steps for Local-Only Mode:
    - OpenAI API calls replaced with Ollama endpoints
    - Embedding models switched to local Ollama
 
-3. Configure local alternatives for:
+3. Configure local alternatives for SOTA RAG:
    - OCR processing (instead of Mistral API)
    - Reranking (instead of Cohere API)
    - Long-term memory (instead of Zep API)
 
-4. Access n8n at http://${ACCESS_HOST}:5678 to activate workflows
+4. Access n8n at http://${ACCESS_HOST}:5678 to verify workflows are active
 
-5. Test the local SOTA RAG capabilities
+5. Test both systems independently:
+   - InsightsLM: Access http://${ACCESS_HOST}:3010 for notebook creation (uses local 768-dim vectors)
+   - SOTA RAG: Use n8n workflows for local advanced RAG features (uses local 1536-dim vectors)
+
+6. Verify separation:
+   - InsightsLM operates with original database tables and functions
+   - SOTA RAG operates with enhanced v2 tables and functions
+   - Both systems functional but independent (integration planned for future)
+
+7. Plan integration: See SOTA_PLANS.md for roadmap to enhance InsightsLM with SOTA capabilities
 
 $([ "$IS_MACOS" = true ] && echo "
 macOS Configuration:
@@ -1447,6 +1793,7 @@ Linux Configuration:
 - Docker Ollama services configured
 - Model auto-pull configured")
 EOF
+    fi
 fi
 
 echo -e "${GREEN}✓ SOTA RAG deployment configured${NC}"
@@ -1565,11 +1912,309 @@ done
 echo "✅ Unified admin user configured across all services"
 
 # =============================================================================
+# INSIGHTSLM CREDENTIAL CREATION AND WORKFLOW IMPORT
+# =============================================================================
+
+if [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo ""
+    echo -e "${YELLOW}=== Setting up InsightsLM Credentials and Workflows ===${NC}"
+
+    # Create n8n API key via REST API (following easy_setup_v2.sh pattern exactly)
+    echo "Creating n8n API key..."
+    sleep 5
+
+    LOGIN_RESPONSE=$(curl -s -c /tmp/n8n-cookies.txt -X POST http://localhost:5678/rest/login \
+        -H 'Content-Type: application/json' \
+        -d "{\"emailOrLdapLoginId\":\"${UNIFIED_EMAIL}\",\"password\":\"${UNIFIED_PASSWORD}\"}" 2>/dev/null || echo "{}")
+
+    N8N_API_KEY=""
+    if echo "$LOGIN_RESPONSE" | grep -q "\"email\":\"${UNIFIED_EMAIL}\""; then
+        API_KEY_RESPONSE=$(curl -s -b /tmp/n8n-cookies.txt -X POST http://localhost:5678/rest/api-keys \
+            -H 'Content-Type: application/json' \
+            -d '{"label":"auto-generated-insightslm","expiresAt":null,"scopes":["user:read","user:list","user:create","user:changeRole","user:delete","user:enforceMfa","sourceControl:pull","securityAudit:generate","project:create","project:update","project:delete","project:list","variable:create","variable:delete","variable:list","variable:update","tag:create","tag:read","tag:update","tag:delete","tag:list","workflowTags:update","workflowTags:list","workflow:create","workflow:read","workflow:update","workflow:delete","workflow:list","workflow:move","workflow:activate","workflow:deactivate","execution:delete","execution:read","execution:list","credential:create","credential:move","credential:delete"]}' 2>/dev/null)
+        
+        # Extract API key from JSON response using a here-doc to avoid nested quote/parenthesis issues
+        N8N_API_KEY=$(echo "$API_KEY_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('data', {}).get('rawApiKey', ''))
+except:
+    print('')
+" 2>/dev/null || echo "")
+    fi
+    rm -f /tmp/n8n-cookies.txt
+
+    if [ -n "$N8N_API_KEY" ]; then
+        echo "  ✅ n8n API key created successfully"
+    else
+        echo "  ⚠️ Could not create n8n API key - workflows may need manual configuration"
+        N8N_API_KEY=""
+    fi
+
+    # Create InsightsLM-specific credentials (following easy_setup_v2.sh pattern)
+    echo "Creating InsightsLM n8n credentials..."
+
+# Generate credential IDs for InsightsLM
+HEADER_AUTH_ID=$(openssl rand -hex 8 | cut -c1-16)
+SUPABASE_LM_ID=$(openssl rand -hex 8 | cut -c1-16)
+OLLAMA_LM_ID=$(openssl rand -hex 8 | cut -c1-16)
+N8N_API_ID=$(openssl rand -hex 8 | cut -c1-16)
+
+# Create InsightsLM credentials JSON
+cat > /tmp/insightslm_credentials.json << EOF
+[
+  {
+    "id": "${HEADER_AUTH_ID}",
+    "name": "Header Auth account",
+    "type": "httpHeaderAuth",
+    "data": {
+      "name": "Authorization",
+      "value": "${NOTEBOOK_GENERATION_AUTH}"
+    }
+  },
+  {
+    "id": "${SUPABASE_LM_ID}",
+    "name": "Supabase account",
+    "type": "supabaseApi",
+    "data": {
+      "host": "http://kong:8000",
+      "serviceRole": "${SERVICE_ROLE_KEY}"
+    }
+  },
+  {
+    "id": "${OLLAMA_LM_ID}",
+    "name": "Ollama account",
+    "type": "ollamaApi",
+    "data": {
+      "baseUrl": "http://ollama:11434"
+    }
+  },
+  {
+    "id": "${N8N_API_ID}",
+    "name": "n8n account",
+    "type": "n8nApi",
+    "data": {
+      "apiKey": "${N8N_API_KEY:-}",
+      "baseUrl": "http://n8n:5678/api/v1"
+    }
+  }
+]
+EOF
+
+# Import InsightsLM credentials
+echo "  → Importing InsightsLM credentials to n8n..."
+docker cp /tmp/insightslm_credentials.json n8n:/tmp/lm_creds.json
+IMPORT_RESULT=$(docker exec n8n n8n import:credentials --input=/tmp/lm_creds.json 2>&1)
+if echo "$IMPORT_RESULT" | grep -q "error\|Error"; then
+    echo -e "${YELLOW}  Warning: InsightsLM credential import may have failed:${NC}"
+    echo "    $IMPORT_RESULT"
+else
+    echo "  ✅ InsightsLM credentials imported successfully"
+fi
+
+# Create Supabase Auth user for InsightsLM frontend login (following easy_setup_v2.sh pattern)
+echo "  → Creating Supabase Auth user for InsightsLM frontend..."
+USER_EXISTS=$(docker exec supabase-db psql -t -A -U supabase_admin -d postgres -c "SELECT COUNT(*) FROM auth.users WHERE email='${UNIFIED_EMAIL}';" 2>/dev/null | tr -d '\r')
+
+if [ "$USER_EXISTS" = "0" ] || [ -z "$USER_EXISTS" ]; then
+    # Create new user with all required fields properly set
+    if docker exec supabase-db psql -U supabase_admin -d postgres -c "
+    INSERT INTO auth.users (
+        id, instance_id, email, encrypted_password, email_confirmed_at,
+        created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role,
+        confirmation_token, recovery_token, email_change_token_new, email_change_token_current,
+        phone, phone_change_token, reauthentication_token, email_change,
+        confirmation_sent_at, recovery_sent_at, email_change_sent_at, phone_change_sent_at,
+        reauthentication_sent_at
+    ) VALUES (
+        gen_random_uuid(), '00000000-0000-0000-0000-000000000000', '${UNIFIED_EMAIL}',
+        crypt('${UNIFIED_PASSWORD}', gen_salt('bf')), NOW(), NOW(), NOW(),
+        '{}', '{}', 'authenticated', 'authenticated',
+        '', '', '', '',
+        NULL, '', '', '',
+        NULL, NULL, NULL, NULL,
+        NULL
+    );" 2>&1 | grep -q "INSERT"; then
+        echo "    ✅ Created new Supabase Auth user for InsightsLM"
+    else
+        echo "    ⚠️ Warning: Could not create Supabase Auth user (may already exist)"
+    fi
+else
+    # Update existing user's password and ensure all token fields are properly set
+    if docker exec supabase-db psql -U supabase_admin -d postgres -c "
+    UPDATE auth.users 
+    SET encrypted_password = crypt('${UNIFIED_PASSWORD}', gen_salt('bf')),
+        updated_at = NOW(),
+        confirmation_token = COALESCE(confirmation_token, ''),
+        recovery_token = COALESCE(recovery_token, ''),
+        email_change_token_new = COALESCE(email_change_token_new, ''),
+        email_change_token_current = COALESCE(email_change_token_current, ''),
+        reauthentication_token = COALESCE(reauthentication_token, ''),
+        phone_change_token = COALESCE(phone_change_token, ''),
+        email_change = COALESCE(email_change, '')
+    WHERE email = '${UNIFIED_EMAIL}';" 2>&1 | grep -q "UPDATE"; then
+        echo "    ✅ Updated existing Supabase Auth user for InsightsLM"
+    else
+        echo "    ⚠️ Warning: Could not update Supabase Auth user"
+    fi
+fi
+
+# Import and execute InsightsLM workflow importer
+echo "  → Importing InsightsLM workflow importer..."
+cp insights-lm-local-package/n8n/Local_Import_Insights_LM_Workflows.json /tmp/lm_import_workflow.json
+
+# Update workflow with credential IDs and repository URLs
+python3 - << EOF
+import json
+
+with open('/tmp/lm_import_workflow.json', 'r') as f:
+    workflow = json.load(f)
+
+# Update the Enter User Values node with our credential IDs
+for node in workflow.get('nodes', []):
+    if node.get('name') == 'Enter User Values':
+        assignments = node.get('parameters', {}).get('assignments', {}).get('assignments', [])
+        for a in assignments:
+            if 'Header Auth' in a.get('name', ''):
+                a['value'] = '${HEADER_AUTH_ID}'
+            elif 'Supabase' in a.get('name', ''):
+                a['value'] = '${SUPABASE_LM_ID}'
+            elif 'Ollama' in a.get('name', ''):
+                a['value'] = '${OLLAMA_LM_ID}'
+    elif node.get('name') == 'n8n' and node.get('type') == 'n8n-nodes-base.n8n':
+        node.setdefault('credentials', {}).setdefault('n8nApi', {})['id'] = '${N8N_API_ID}'
+    elif node.get('name') == 'Workflow File URLs to Download (Local Versions)':
+        # Update the workflow URLs to use the configured repository
+        assignments = node.get('parameters', {}).get('assignments', {}).get('assignments', [])
+        for a in assignments:
+            if a.get('name') == 'workflow-files' and isinstance(a.get('value'), str):
+                # Replace the hardcoded repository URL with our variable
+                a['value'] = a['value'].replace(
+                    'https://raw.githubusercontent.com/theaiautomators/insights-lm-local-package',
+                    '${INSIGHTS_LM_RAW_URL:-https://raw.githubusercontent.com/sirouk/insights-lm-local-package}'
+                )
+
+with open('/tmp/lm_import_workflow.json', 'w') as f:
+    json.dump(workflow, f, indent=2)
+EOF
+
+# Import the workflow importer
+docker cp /tmp/lm_import_workflow.json n8n:/tmp/lm_import_workflow.json
+docker exec n8n n8n import:workflow --input=/tmp/lm_import_workflow.json >/dev/null 2>&1 || true
+
+# Execute the import workflow to download InsightsLM workflows
+echo "  → Executing InsightsLM workflow import..."
+sleep 5
+IMPORT_WORKFLOW_ID=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT id FROM workflow_entity WHERE name='Local Import Insights LM Workflows' ORDER BY \"createdAt\" DESC LIMIT 1;" 2>/dev/null | tr -d '\r')
+
+if [ -n "$IMPORT_WORKFLOW_ID" ]; then
+    docker exec n8n n8n execute --id="${IMPORT_WORKFLOW_ID}" >/dev/null 2>&1 || true
+    sleep 15
+    echo "  ✅ InsightsLM workflows imported"
+else
+    echo "  ⚠️ Could not find InsightsLM import workflow"
+fi
+
+# Update Ollama model references in InsightsLM workflows
+echo "  → Updating Ollama model references in InsightsLM workflows..."
+sleep 5
+
+# Check how many InsightsLM workflows were imported
+WORKFLOW_COUNT=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT COUNT(*) FROM workflow_entity WHERE name LIKE 'InsightsLM%';" 2>/dev/null | tr -d '\r')
+echo "    Found $WORKFLOW_COUNT InsightsLM workflows to update"
+
+if [ "$WORKFLOW_COUNT" -gt 0 ]; then
+    # Update main model references for local models
+    if [ "$USE_EXTERNAL_APIS" = false ]; then
+        echo "    Updating main model references to $MAIN_MODEL..."
+        MAIN_MODEL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+        UPDATE workflow_entity 
+        SET nodes = REPLACE(nodes::text, '\"model\": \"qwen3:8b-q4_K_M\"', '\"model\": \"$MAIN_MODEL\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%qwen3:8b-q4_K_M%'
+        RETURNING id;" 2>/dev/null | wc -l)
+        echo "      Updated main model in $MAIN_MODEL_UPDATES workflows"
+
+        # Update embedding model references - handle both with and without :latest suffix
+        EMBEDDING_MODEL_BASE=$(echo "$EMBEDDING_MODEL" | sed 's/:latest$//')
+        if [[ "$EMBEDDING_MODEL" != *":latest" ]]; then
+            EMBEDDING_MODEL_WITH_LATEST="${EMBEDDING_MODEL}:latest"
+        else
+            EMBEDDING_MODEL_WITH_LATEST="$EMBEDDING_MODEL"
+        fi
+
+        echo "    Updating embedding model references to $EMBEDDING_MODEL..."
+
+        # Update nomic-embed-text:latest references
+        EMBED_UPDATES_1=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+        UPDATE workflow_entity 
+        SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text:latest\"', '\"model\": \"$EMBEDDING_MODEL_WITH_LATEST\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%nomic-embed-text:latest%'
+        RETURNING id;" 2>/dev/null | wc -l)
+
+        # Update nomic-embed-text references (without :latest)
+        EMBED_UPDATES_2=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+        UPDATE workflow_entity 
+        SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text\"', '\"model\": \"$EMBEDDING_MODEL\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"nomic-embed-text\"%' AND nodes::text NOT LIKE '%nomic-embed-text:latest%'
+        RETURNING id;" 2>/dev/null | wc -l)
+
+        echo "      Updated embedding model in $((EMBED_UPDATES_1 + EMBED_UPDATES_2)) workflow instances"
+    fi
+
+    # Update SUPABASE_PUBLIC_URL placeholder in InsightsLM workflows
+    echo "    Updating Supabase public URL in InsightsLM workflows..."
+    SUPABASE_PUBLIC_URL="http://${ACCESS_HOST}:8000"
+    URL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
+    UPDATE workflow_entity 
+    SET nodes = REPLACE(nodes::text, 'SUPABASE_PUBLIC_URL_PLACEHOLDER', '$SUPABASE_PUBLIC_URL')::jsonb
+    WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%SUPABASE_PUBLIC_URL_PLACEHOLDER%'
+    RETURNING id;" 2>/dev/null | wc -l)
+
+    if [ "$URL_UPDATES" -gt 0 ]; then
+        echo "      ✅ Updated Supabase public URL in $URL_UPDATES InsightsLM workflow(s)"
+    fi
+
+    echo "  ✅ InsightsLM workflows configured"
+else
+    echo "  ⚠️ No InsightsLM workflows found to update"
+fi
+
+# Activate InsightsLM workflows
+echo "  → Activating InsightsLM workflows..."
+
+INSIGHTSLM_WORKFLOWS=(
+    "InsightsLM - Podcast Generation"
+    "InsightsLM - Chat"
+    "InsightsLM - Process Additional Sources"
+    "InsightsLM - Upsert to Vector Store"
+    "InsightsLM - Generate Notebook Details"
+)
+
+for WORKFLOW_NAME in "${INSIGHTSLM_WORKFLOWS[@]}"; do
+    WORKFLOW_ID=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT id FROM workflow_entity WHERE name='${WORKFLOW_NAME}' ORDER BY \"createdAt\" DESC LIMIT 1;" 2>/dev/null | tr -d '\r')
+    if [ -n "$WORKFLOW_ID" ]; then
+        echo "    Activating workflow: $WORKFLOW_NAME"
+        # Deactivate first, then activate to ensure proper webhook registration
+        docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=false >/dev/null 2>&1 || true
+        sleep 1
+        docker exec n8n n8n update:workflow --id="${WORKFLOW_ID}" --active=true >/dev/null 2>&1 || true
+        echo "      ✅ Workflow activated"
+    else
+        echo "    ⚠️ Could not find workflow: $WORKFLOW_NAME"
+    fi
+done
+
+    echo -e "${GREEN}✓ InsightsLM setup complete - ready for use${NC}"
+fi
+
+# =============================================================================
 # SOTA RAG CREDENTIALS AND WORKFLOW IMPORT
 # =============================================================================
 
-echo ""
-echo -e "${YELLOW}=== Importing SOTA RAG with Unified Credentials ===${NC}"
+if [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo ""
+    echo -e "${YELLOW}=== Importing SOTA RAG with Unified Credentials ===${NC}"
 
 # Run the credentials and workflow import process (idempotent unless FORCE_RESET)
 echo "Running SOTA RAG credentials and workflow import..."
@@ -1747,13 +2392,22 @@ EOF
     fi
 fi
 
+    echo -e "${GREEN}✓ SOTA RAG setup complete${NC}"
+fi
+
 # =============================================================================
 # FINAL OUTPUT
 # =============================================================================
 
 echo ""
 echo -e "${GREEN}============================================================${NC}"
-echo -e "${GREEN}🎉 === SOTA RAG DEPLOYMENT COMPLETE === 🎉${NC}"  
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${GREEN}🎉 === DUAL SYSTEM DEPLOYMENT COMPLETE === 🎉${NC}"  
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${GREEN}🎉 === INSIGHTSLM LEGACY DEPLOYMENT COMPLETE === 🎉${NC}"
+else
+    echo -e "${GREEN}🎉 === SOTA RAG 2.1 DEPLOYMENT COMPLETE === 🎉${NC}"
+fi
 echo -e "${GREEN}============================================================${NC}"
 echo ""
 
@@ -1772,7 +2426,8 @@ echo "🔧 Enhanced edge functions - Vector Search & Hybrid Search (from SOTA RA
 echo "🔧 Database functions - hybrid_search_v2_with_details & match_documents_v2_vector"
 echo "🔧 Database tables - documents_v2, record_manager_v2, metadata_fields, tabular_document_rows"
 echo "🔧 Read-only database user - For secure query operations"
-echo "🐍 Complete SOTA RAG upgrade following sota-rag-setup.md specifications"
+echo "📓 InsightsLM workflows - All original functionality preserved"
+echo "🔗 SOTA_PLANS.md - Future integration roadmap for InsightsLM → SOTA RAG enhancement"
 echo "📂 $BACKUP_DIR/ - Backup of previous state"
 echo ""
 
@@ -1804,15 +2459,37 @@ else
     echo "   - OCR processing (replace Mistral API with local OCR)"
     echo "   - Reranking (replace Cohere API with local reranker)"
     echo "   - Long-term memory (replace Zep API with local memory)"
-    echo "4. Access n8n at http://${ACCESS_HOST}:5678 to activate workflows"
-    echo "5. Test local SOTA RAG features"
+    echo "4. Access n8n at http://${ACCESS_HOST}:5678 to verify workflows are active"
+    echo "5. Test both systems independently:"
+    echo "   - InsightsLM: Access http://${ACCESS_HOST}:3010 for notebook creation (uses original 768-dim vectors)"
+    echo "   - SOTA RAG: Use n8n workflows for advanced RAG features (uses 1536-dim vectors)"
+    echo "6. Verify separation:"
+    echo "   - InsightsLM operates with original database tables and functions"
+    echo "   - SOTA RAG operates with enhanced v2 tables and functions" 
+    echo "   - Both systems functional but independent (integration planned for future)"
     echo ""
     echo -e "${BLUE}📖 See SOTA_RAG_SETUP_GUIDE.md for local alternative configurations${NC}"
 fi
 
 echo ""
 echo -e "${GREEN}============================================================${NC}"
-echo -e "${BLUE}🚀 SOTA RAG deployment ready! Your AI capabilities have been significantly enhanced.${NC}"
+if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
+    echo -e "${BLUE}🚀 Dual System deployment ready! Both InsightsLM and SOTA RAG are fully operational:${NC}"
+    echo ""
+    echo -e "${BLUE}📓 InsightsLM: Complete notebook/content generation (independent operation)${NC}"
+    echo -e "${BLUE}🧠 SOTA RAG: Advanced hybrid search, contextual embeddings, GraphRAG (independent operation)${NC}"
+    echo -e "${BLUE}🔧 Integration: See SOTA_PLANS.md for future InsightsLM → SOTA RAG backend integration${NC}"
+elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
+    echo -e "${BLUE}🚀 InsightsLM Legacy deployment ready! Complete notebook and content generation system:${NC}"
+    echo ""
+    echo -e "${BLUE}📓 InsightsLM: Original functionality with local Ollama models${NC}"
+    echo -e "${BLUE}🔧 Upgrade Path: Run again and select 'Both Systems' to add SOTA RAG capabilities${NC}"
+else
+    echo -e "${BLUE}🚀 SOTA RAG 2.1 deployment ready! Advanced AI capabilities operational:${NC}"
+    echo ""
+    echo -e "${BLUE}🧠 SOTA RAG: Hybrid search, contextual embeddings, GraphRAG, multimodal processing${NC}"
+    echo -e "${BLUE}🔧 Add InsightsLM: Run again and select 'Both Systems' to add notebook interface${NC}"
+fi
 echo ""
 echo -e "${BLUE}💡 Note: This script is idempotent - you can run it multiple times safely.${NC}"
 echo -e "${BLUE}   Future runs will preserve existing data and only update components as needed.${NC}"

@@ -31,12 +31,19 @@ Your InsightsLM system has been prepared for upgrade to the State-of-the-Art RAG
 ./easy_deploy.sh
 ```
 
+Choose from three deployment modes:
+1. **InsightsLM Legacy** - Original system only
+2. **SOTA RAG 2.1** - Advanced system only  
+3. **Both Systems** - Dual independent deployment (default)
+
 This will:
-1. ✅ Guide you through configuration choices
-2. ✅ Handle database migration safely  
-3. ✅ Configure workflows and services
-4. ✅ Set up API integrations
-5. ✅ Preserve your existing InsightsLM setup
+1. ✅ Automatically clone/update required repositories based on selection
+2. ✅ Validate all required files exist for chosen deployment  
+3. ✅ Guide you through system selection and configuration choices
+4. ✅ Handle database migration safely based on selected systems
+5. ✅ Configure workflows and services for chosen deployment
+6. ✅ Set up API integrations (if selected)
+7. ✅ Deploy exactly what you need with upgrade path available
 
 ### Option 2: Expert Manual Deployment
 ```bash
@@ -54,25 +61,34 @@ cp api-keys-template.env .env
 python3 frontend-compatibility-bridge.py
 ```
 
-## Two-Phase Upgrade Strategy
+## Three Deployment Options
 
-### 🌐 Phase 1: External APIs
-**Fast setup with immediate advanced features**
-- Uses OpenAI for LLMs (GPT-4, embeddings)
-- Uses Mistral for OCR and vision processing  
-- Uses Cohere for result reranking
-- Uses Zep for long-term memory
-- **Time**: ~1 hour to deploy
-- **Cost**: API usage fees
-
-### 🏠 Phase 2: Local-Only
-**Complete privacy with no external dependencies**
-- Replaces OpenAI with Ollama models
-- Replaces Mistral with local OCR (Tesseract/PaddleOCR)
-- Replaces Cohere with local reranking models
-- Replaces Zep with local memory solutions
-- **Time**: ~1 week to implement alternatives
+### 1. 📓 InsightsLM Legacy
+**Original notebook and content generation system**
+- Complete InsightsLM functionality with local Ollama
+- Original 768-dimensional vector embeddings
+- Chat, podcast generation, document processing
+- **Time**: ~30 minutes to deploy
 - **Cost**: Hardware requirements only
+- **Upgrade Path**: Add SOTA RAG later via Option 3
+
+### 2. 🧠 SOTA RAG 2.1  
+**Advanced RAG system with cutting-edge features**
+- Hybrid search, contextual embeddings, GraphRAG, multimodal
+- 1536-dimensional vector embeddings
+- Choose External APIs (fast setup) or Local-Only (privacy focused)
+- **Time**: ~1 hour (External) / ~1 week (Local alternatives)
+- **Cost**: API fees (External) / Hardware only (Local)
+- **Upgrade Path**: Add InsightsLM interface later via Option 3
+
+### 3. 🎯 Both Systems (Default)
+**Best of both worlds - independent operation with integration roadmap**
+- Full InsightsLM functionality + Full SOTA RAG capabilities
+- Independent databases and processing pipelines
+- Clear integration roadmap in SOTA_PLANS.md
+- **Time**: ~1 hour to deploy both systems
+- **Cost**: API fees (if using external APIs for SOTA RAG)
+- **Future**: Planned integration for enhanced InsightsLM with SOTA backend
 
 ## SOTA RAG Features You'll Get
 
@@ -113,11 +129,13 @@ python3 frontend-compatibility-bridge.py
 
 ## Compatibility & Safety
 
-### ✅ **Backward Compatible**
-- Your existing InsightsLM frontend continues to work
-- Original workflows preserved alongside new ones
-- Database migration includes data preservation
-- Rollback capability via automated backups
+### ✅ **Independent Dual System Deployment**
+- **Complete InsightsLM Support**: All original functionality preserved exactly as before
+- **Full SOTA RAG Capabilities**: Advanced features available as separate system
+- **Clean Separation**: Systems operate independently - no interference or compatibility issues
+- **Unified Deployment**: Single script (`easy_deploy.sh`) replaces `easy_setup_v2.sh`
+- **Database Independence**: Separate schemas preserve data integrity for both systems
+- **Future Integration Ready**: Designed for planned integration via bridge workflows
 
 ### 🛡️ **Safe Migration**
 - Automatic backup before any changes
@@ -132,17 +150,23 @@ python3 frontend-compatibility-bridge.py
 
 ## Next Steps
 
-1. **Choose your deployment approach** - Quick guided setup or manual control
-2. **Select deployment mode** - External APIs for speed, local for privacy  
-3. **Configure features** - Enable the capabilities you want
-4. **Run deployment** - Use the provided scripts
-5. **Test and enjoy** - Your RAG system is now state-of-the-art! 
+1. **Run unified deployment** - Single `easy_deploy.sh` script handles everything
+2. **Select deployment option** - Choose what you want to deploy:
+   - **Option 1**: InsightsLM Legacy only (fastest, original functionality)
+   - **Option 2**: SOTA RAG 2.1 only (advanced features, no notebook UI)
+   - **Option 3**: Both Systems (recommended - get everything with upgrade path)
+3. **Configure features** - For SOTA RAG: choose external APIs vs local models
+4. **Test your deployment**:
+   - **InsightsLM**: Access `http://localhost:3010` (if deployed)
+   - **SOTA RAG**: Access `http://localhost:5678` (if deployed)
+5. **Plan integration** - If using Option 3, see `SOTA_PLANS.md` for integration roadmap! 
 
 ## Support
 
 - 📋 **Detailed Roadmap**: `SOTA_RAG_UPGRADE_ROADMAP.md`
 - 📖 **Setup Guide**: `SOTA_RAG_SETUP_GUIDE.md`  
 - 🔧 **API Configuration**: `api-keys-template.env`
+- 🔗 **Integration Plans**: `SOTA_PLANS.md` - Future InsightsLM + SOTA RAG integration
 - 🆘 **Community**: The AI Automators forums
 - 💾 **Backup**: Automatic backup created before upgrade
 
