@@ -176,7 +176,8 @@ fi
 
 # Generate unified credentials (following easy_setup_v2.sh pattern)
 UNIFIED_EMAIL="admin@local.host"
-UNIFIED_PASSWORD="${DASHBOARD_PASSWORD:-$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)}"
+DASHBOARD_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-16)
+UNIFIED_PASSWORD="${DASHBOARD_PASSWORD}"
 
 # Generate or reuse required secrets  
 N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-$(openssl rand -hex 16)}"
@@ -2420,6 +2421,7 @@ echo -e "${BLUE}Files created during deployment:${NC}"
 echo "📋 SOTA_RAG_UPGRADE_ROADMAP.md - Detailed upgrade strategy"
 echo "📋 SOTA_RAG_SETUP_GUIDE.md - Complete setup documentation"
 echo "📋 DEPLOYMENT_SUMMARY.txt - Deployment configuration summary"
+echo "🔑 unified_credentials.txt - Login credentials for all services"
 echo "📋 api-keys-template.env - API key configuration template" 
 echo "🔧 workflows/credential-templates.json - API credential templates"
 echo "🔧 Enhanced edge functions - Vector Search & Hybrid Search (from SOTA RAG src)"
