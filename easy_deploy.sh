@@ -232,21 +232,28 @@ elif [ "$DEPLOYMENT_MODE" = "2" ]; then
     DEPLOY_INSIGHTSLM=false
     DEPLOY_SOTA_RAG=true
     
-    # For SOTA RAG, ask about external APIs vs local
+    # For SOTA RAG, ask about external APIs vs local vs hybrid
     echo ""
     echo -e "${YELLOW}SOTA RAG API Configuration:${NC}"
     echo "A. External APIs (OpenAI, Mistral, Cohere, Zep) - Fast setup, full features"
     echo "B. Local-Only (Ollama + local alternatives) - Privacy focused, no API costs"
+    echo "C. Both Local and External (Hybrid) - Best flexibility, use both as needed"
     echo ""
-    read -p "Select API mode (A/b): " -r API_MODE
-    API_MODE=${API_MODE:-A}
+    read -p "Select API mode (C/a/b): " -r API_MODE
+    API_MODE=${API_MODE:-C}
     
     if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
         USE_EXTERNAL_APIS=true
-        echo -e "${GREEN}✓ SOTA RAG with External APIs selected${NC}"
-    else
+        USE_LOCAL_APIS=false
+        echo -e "${GREEN}✓ SOTA RAG with External APIs only${NC}"
+    elif [[ "$API_MODE" =~ ^[Bb]$ ]]; then
         USE_EXTERNAL_APIS=false
-        echo -e "${GREEN}✓ SOTA RAG with Local-Only selected${NC}"
+        USE_LOCAL_APIS=true
+        echo -e "${GREEN}✓ SOTA RAG with Local-Only${NC}"
+    else
+        USE_EXTERNAL_APIS=true
+        USE_LOCAL_APIS=true
+        echo -e "${GREEN}✓ SOTA RAG with Both Local and External APIs (Hybrid)${NC}"
     fi
 else
     echo -e "${GREEN}✓ Both Systems selected - InsightsLM + SOTA RAG dual deployment${NC}"
@@ -258,16 +265,23 @@ else
     echo -e "${YELLOW}SOTA RAG API Configuration (InsightsLM will use local Ollama):${NC}"
     echo "A. External APIs for SOTA RAG (OpenAI, Mistral, Cohere, Zep)"
     echo "B. Local-Only for both systems (Ollama + local alternatives)"
+    echo "C. Both Local and External (Hybrid) - Best flexibility, use both as needed"
     echo ""
-    read -p "Select API mode (A/b): " -r API_MODE
-    API_MODE=${API_MODE:-A}
+    read -p "Select API mode (C/a/b): " -r API_MODE
+    API_MODE=${API_MODE:-C}
     
     if [[ "$API_MODE" =~ ^[Aa]$ ]]; then
         USE_EXTERNAL_APIS=true
+        USE_LOCAL_APIS=true  # Always include local for InsightsLM
         echo -e "${GREEN}✓ Dual System: InsightsLM (Local) + SOTA RAG (External APIs)${NC}"
-    else
+    elif [[ "$API_MODE" =~ ^[Bb]$ ]]; then
         USE_EXTERNAL_APIS=false
+        USE_LOCAL_APIS=true
         echo -e "${GREEN}✓ Dual System: Both using local models and alternatives${NC}"
+    else
+        USE_EXTERNAL_APIS=true
+        USE_LOCAL_APIS=true
+        echo -e "${GREEN}✓ Dual System: Both Local and External APIs (Hybrid)${NC}"
     fi
 fi
 
@@ -397,7 +411,13 @@ elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
     echo -e "   → Upgrade path: Re-run script and select 'Both Systems' to add SOTA RAG"
 elif [ "$DEPLOY_SOTA_RAG" = true ]; then
     echo -e "${GREEN}📝 System to Deploy: SOTA RAG 2.1${NC}"
-    echo -e "   → Advanced RAG with $([ "$USE_EXTERNAL_APIS" = true ] && echo "external APIs" || echo "local models")"
+    if [ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ]; then
+        echo -e "   → Advanced RAG with hybrid mode (both external APIs and local models)"
+    elif [ "$USE_EXTERNAL_APIS" = true ]; then
+        echo -e "   → Advanced RAG with external APIs"
+    else
+        echo -e "   → Advanced RAG with local models"
+    fi
     echo -e "   → Upgrade path: Re-run script and select 'Both Systems' to add InsightsLM UI"
 fi
 
@@ -646,29 +666,37 @@ echo "ENABLE_CONTEXTUAL=$([[ "$ENABLE_CONTEXTUAL" =~ ^[Yy]$ ]] && echo "true" ||
 echo "ENABLE_LONGTERM_MEMORY=$([[ "$ENABLE_LONGTERM_MEMORY" =~ ^[Yy]$ ]] && echo "true" || echo "false")" >> .env
 
 # Add Ollama Model Configuration for local deployments
-if [ "$USE_EXTERNAL_APIS" = false ]; then
+if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
     echo "" >> .env
     echo "# Ollama Model Configuration" >> .env
     echo "OLLAMA_MODEL=$MAIN_MODEL" >> .env
     echo "EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
 fi
 
-# Write API Keys to .env (already collected earlier)
+# Write API Keys to .env based on configuration
+echo "" >> .env
 if [ "$USE_EXTERNAL_APIS" = true ]; then
-    echo "" >> .env
     echo "# External API Keys" >> .env
-    echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
-    echo "MISTRAL_API_KEY=$MISTRAL_API_KEY" >> .env
-    echo "COHERE_API_KEY=$COHERE_API_KEY" >> .env
-    echo "ZEP_API_KEY=$ZEP_API_KEY" >> .env
-    echo "LIGHTRAG_SERVER_URL=http://lightrag:8020" >> .env
+    echo "OPENAI_API_KEY=${OPENAI_API_KEY:-}" >> .env
+    echo "MISTRAL_API_KEY=${MISTRAL_API_KEY:-}" >> .env
+    echo "COHERE_API_KEY=${COHERE_API_KEY:-}" >> .env
+    echo "ZEP_API_KEY=${ZEP_API_KEY:-}" >> .env
+    echo "LIGHTRAG_SERVER_URL=${LIGHTRAG_SERVER_URL:-http://lightrag:8020}" >> .env
 else
-    echo "" >> .env
-    echo "# Local-Only Configuration" >> .env
+    echo "# External API Keys (Disabled)" >> .env
     echo "OPENAI_API_KEY=" >> .env
     echo "MISTRAL_API_KEY=" >> .env
     echo "COHERE_API_KEY=" >> .env
+    echo "ZEP_API_KEY=" >> .env
     echo "LIGHTRAG_SERVER_URL=http://lightrag:8020" >> .env
+fi
+
+if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
+    echo "" >> .env
+    echo "# Local API Configuration" >> .env
+    echo "LOCAL_OLLAMA_ENABLED=true" >> .env
+    echo "LOCAL_EMBEDDING_MODEL=$EMBEDDING_MODEL" >> .env
+    echo "LOCAL_MAIN_MODEL=$MAIN_MODEL" >> .env
 fi
 
 echo -e "${GREEN}✓ Environment configuration created${NC}"
@@ -834,9 +862,20 @@ else
     cp_sed 's/STUDIO_DEFAULT_ORGANIZATION=Default Organization/STUDIO_DEFAULT_ORGANIZATION="Default Organization"/' .env
     cp_sed 's/STUDIO_DEFAULT_PROJECT=Default Project/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
 
-    # Start services with fresh volumes
+    # Start services with fresh volumes  
     echo "Starting all services with profile: $PROFILE..."
     python3 start_services.py --profile "$PROFILE" --environment private || true
+
+    # Start host Ollama for macOS if needed (following easy_setup_v2.sh pattern)
+    if [ "$IS_MACOS" = true ] && ([ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]); then
+        echo "  → Starting host Ollama for macOS..."
+        ./ollama-proxy/start-host-ollama.sh || {
+            echo "    Warning: Could not start host Ollama automatically"
+            echo "    You may need to run: ./ollama-proxy/start-host-ollama.sh manually"
+        }
+        nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
+        echo "    ✅ Host Ollama started and watcher launched"
+    fi
 fi
 
 # Ensure n8n is running
@@ -873,8 +912,8 @@ fi
 # OLLAMA CONFIGURATION (for Local Model Support)
 # =============================================================================
 
-# Configure Ollama if using local models (Phase 2 deployment)
-if [ "$USE_EXTERNAL_APIS" = false ]; then
+# Configure Ollama if using local models (any deployment that includes local APIs)
+if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
     echo ""
     echo -e "${YELLOW}=== Configuring Ollama for Local Models ===${NC}"
     
@@ -1108,10 +1147,7 @@ NGINX_CONF
             fi
         done
 
-        # 6. Start Ollama on host and launch watcher
-        echo "  Starting Ollama on host and launching watcher..."
-        ./ollama-proxy/start-host-ollama.sh
-        nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
+        # 6. Host Ollama will be started after services are up (to ensure Docker is ready)
 
         echo "  ✅ Proxy service 'ollama' configured with watcher-based lifecycle coupling"
         echo "     → Container starts = Ollama starts on host"
@@ -1131,7 +1167,7 @@ NGINX_CONF
     
     echo -e "${GREEN}✓ Ollama configuration prepared for local model deployment${NC}"
 else
-    echo -e "${YELLOW}Using external APIs - Ollama configuration skipped${NC}"
+    echo -e "${YELLOW}Using external APIs only - Ollama configuration skipped${NC}"
 fi
 
 # Database roles are automatically configured by Supabase initialization (following easy_setup_v2.sh pattern)
@@ -1653,7 +1689,7 @@ System Deployment Summary
 =========================
 
 Deployment Mode: $([ "$DEPLOYMENT_MODE" = "1" ] && echo "InsightsLM Legacy Only" || ([ "$DEPLOYMENT_MODE" = "2" ] && echo "SOTA RAG 2.1 Only" || echo "Both Systems (Dual Deployment)"))
-$([ "$USE_EXTERNAL_APIS" = true ] && echo "API Mode: External APIs" || echo "API Mode: Local-Only")
+API Mode: $([ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ] && echo "Hybrid (Both Local and External)" || ([ "$USE_EXTERNAL_APIS" = true ] && echo "External APIs Only" || echo "Local-Only"))
 Systems Deployed: $([ "$DEPLOY_INSIGHTSLM" = true ] && echo -n "InsightsLM ") $([ "$DEPLOY_SOTA_RAG" = true ] && echo -n "SOTA-RAG")
 
 Models:

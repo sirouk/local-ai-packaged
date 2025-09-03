@@ -26,3 +26,4 @@ supabase
 supabase/*
 insights-lm-local-package
 insights-lm-local-package/*
+workflows/credential-templates.json
