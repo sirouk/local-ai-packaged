@@ -13,15 +13,16 @@ __pycache__/
 **/__pycache__/
 
 # Deployment-generated files
-workflows/staging/
+workflows/staging/*
 workflows/sota/
 workflows/fixed/
 backup_*/
-sota-rag-deployment.flag
+
 sota-credential-ids.json
-DEPLOYMENT_SUMMARY*.txt
+sota-rag-deployment.flag
+DEPLOYMENT_SUMMARY.txt
 
 supabase
 supabase/*
-sota-rag-deployment.flag
-DEPLOYMENT_SUMMARY.txt
+insights-lm-local-package
+insights-lm-local-package/*
