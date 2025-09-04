@@ -818,10 +818,31 @@ else
 echo "  → Stopping project containers..."
 # Stop containers by name patterns and compose project
 docker compose -p localai down 2>/dev/null || true
-docker stop $(docker ps -q --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No project containers running"
+
+# Smart Ollama cleanup - preserve proxy container in hybrid mode if we'll need it
+if [ "$IS_MACOS" = true ] && ([ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]); then
+    echo "    Smart cleanup: Preserving Ollama proxy for macOS host integration"
+    echo "    Debug: Hybrid mode detected (IS_MACOS=$IS_MACOS, USE_LOCAL_APIS=$USE_LOCAL_APIS)"
+    # Stop all containers EXCEPT Ollama proxy which we'll reuse
+    docker stop $(docker ps -q --filter "name=supabase-" --filter "name=n8n" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No non-Ollama containers running"
+else
+    # Normal cleanup including Ollama for non-hybrid or non-macOS deployments
+    docker stop $(docker ps -q --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No project containers running"
+fi
 
 echo "  → Removing project containers..."
-docker rm -f $(docker ps -aq --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No project containers to remove"
+# Smart container removal - preserve Ollama proxy container in hybrid mode if we'll need it
+if [ "$IS_MACOS" = true ] && ([ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]); then
+    echo "    Smart cleanup: Preserving Ollama proxy container for reuse"
+    echo "    Debug: Keeping Ollama container, removing others"
+    # Remove all containers EXCEPT Ollama proxy which we'll reuse
+    docker rm -f $(docker ps -aq --filter "name=supabase-" --filter "name=n8n" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No non-Ollama containers to remove"
+else
+    # Normal cleanup including Ollama for non-hybrid or non-macOS deployments  
+    echo "    Standard cleanup: Removing all containers including Ollama"
+    echo "    Debug: Non-hybrid mode or non-macOS (IS_MACOS=$IS_MACOS, USE_LOCAL_APIS=${USE_LOCAL_APIS:-false})"
+    docker rm -f $(docker ps -aq --filter "name=supabase-" --filter "name=n8n" --filter "name=ollama" --filter "name=searxng" --filter "name=flowise" --filter "name=open-webui" --filter "name=qdrant" --filter "name=redis" --filter "name=caddy" --filter "name=insightslm" --filter "name=coqui-tts" --filter "name=whisper-asr" --filter "name=langfuse" --filter "name=clickhouse" --filter "name=minio" --filter "name=postgres" --filter "name=neo4j" --filter "name=lightrag") 2>/dev/null || echo "    No project containers to remove"
+fi
 
 echo "  → Removing project volumes..."
 # Remove volumes by name patterns (including localai_ prefix patterns)
@@ -922,13 +943,25 @@ else
         echo "    Waiting for Docker services to be ready..."
         
         # Wait for Docker services to be fully ready before starting Ollama
-        for i in {1..30}; do
+        echo "    Waiting for Docker Ollama proxy container to be ready..."
+        CONTAINER_READY=false
+        for i in {1..60}; do
             if docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up.*healthy"; then
                 echo "    Docker Ollama proxy container is ready"
+                CONTAINER_READY=true
                 break
+            elif docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up"; then
+                echo "    Docker Ollama proxy container is running but not yet healthy (attempt $i/60)"
+            else
+                echo "    Docker Ollama proxy container not found, waiting for Docker Compose to create it (attempt $i/60)"
             fi
             sleep 2
         done
+        
+        if [ "$CONTAINER_READY" = false ]; then
+            echo "    ⚠️  Docker Ollama proxy container not ready after 2 minutes"
+            echo "    Proceeding anyway - host Ollama may still work with direct connection"
+        fi
         
         # Start host Ollama with retry logic
         OLLAMA_STARTED=false
@@ -1021,9 +1054,10 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
     echo ""
     echo -e "${YELLOW}=== Configuring Ollama for Local Models ===${NC}"
     
-    # macOS-specific Ollama setup (native host + Docker proxy)
+    # OS-specific Ollama setup
+    echo "  Debug: Configuring Ollama for IS_MACOS=$IS_MACOS, PROFILE=$PROFILE"
     if [ "$IS_MACOS" = true ]; then
-        echo -e "${BLUE}Setting up native Ollama and proxy service for macOS...${NC}"
+        echo -e "${BLUE}macOS detected - setting up native Ollama and nginx proxy service...${NC}"
 
         # 1. Ensure Ollama CLI is installed
         if ! command -v ollama >/dev/null 2>&1; then
@@ -1283,9 +1317,25 @@ NGINX_CONF
         echo "     → Container stops = Ollama stops on host (forcefully if needed)"
         
     else
-        # Linux - use Docker Ollama services normally
-        echo -e "${BLUE}Linux detected - using Docker Ollama services${NC}"
-        echo "  Ollama will run in Docker containers as configured"
+        # Linux - use Docker Ollama services normally (real Ollama, not proxy)
+        echo -e "${BLUE}Linux detected - using real Docker Ollama services${NC}"
+        echo "  Debug: Switching from nginx proxy to real Ollama Docker container"
+        echo "  Configuring ollama service to use real Ollama Docker container..."
+        
+        # Configure ollama service to use the real x-ollama anchor instead of nginx proxy
+        yq eval '.services.ollama = {"!!merge": "<<: *service-ollama"}' -i docker-compose.yml
+        
+        # Add appropriate profile based on hardware detection
+        if [ "$PROFILE" = "gpu-nvidia" ]; then
+            yq eval '.services.ollama.profiles = ["gpu-nvidia"]' -i docker-compose.yml
+            echo "    → Configured for NVIDIA GPU profile"
+        elif [ "$PROFILE" = "gpu-amd" ]; then
+            yq eval '.services.ollama.profiles = ["gpu-amd"]' -i docker-compose.yml
+            echo "    → Configured for AMD GPU profile"
+        else
+            yq eval '.services.ollama.profiles = ["cpu"]' -i docker-compose.yml
+            echo "    → Configured for CPU profile"
+        fi
         
         # Update x-init-ollama to pull selected models for Linux
         # Always use local models for Ollama (following easy_setup_v2.sh pattern)
@@ -1296,6 +1346,17 @@ NGINX_CONF
         OLLAMA_COMMAND="echo 'Waiting for Ollama to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_MAIN_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_EMBEDDING_MODEL"
         yq eval ".[\"x-init-ollama\"].command[1] = \"$OLLAMA_COMMAND\"" -i docker-compose.yml
         echo "  Updated x-init-ollama to pull: $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL"
+        
+        # Add ollama-pull service for Linux to ensure models are pulled on startup
+        echo "  Adding ollama-pull service for automatic model initialization..."
+        if ! yq eval '.services | has("ollama-pull-llama")' docker-compose.yml | grep -q "true"; then
+            # Add the init service that pulls models on startup
+            yq eval '.services["ollama-pull-llama"] = {"!!merge": "<<: *init-ollama"}' -i docker-compose.yml
+            yq eval '.services["ollama-pull-llama"].profiles = ["'$PROFILE'"]' -i docker-compose.yml
+            echo "    → Added ollama-pull-llama service for $PROFILE profile"
+        fi
+        
+        echo "  ✅ Real Ollama Docker service configured for Linux with model auto-pull"
     fi
     
     echo -e "${GREEN}✓ Ollama configuration prepared for local model deployment${NC}"
