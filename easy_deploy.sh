@@ -15,6 +15,12 @@ set -e
 
 cd "$(dirname "$0")"
 
+# Default model configuration (following easy_setup_v2.sh pattern)
+DEFAULT_LOCAL_MODEL="qwen3:8b-q4_K_M"
+DEFAULT_EMBEDDING_MODEL="nomic-embed-text"
+DEFAULT_EXTERNAL_MODEL="gpt-4o"
+DEFAULT_EXTERNAL_EMBEDDING="text-embedding-3-small"
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -167,11 +173,15 @@ fi
 echo ""
 echo -e "${YELLOW}=== Generating Unified Admin Credentials ===${NC}"
 
-# Check if we should reuse existing credentials from .env
-if [ -f .env ]; then
-    # Source existing .env to get current values
+# Check if we should reuse existing credentials from .env (skip in reset mode)
+if [ -f .env ] && [ "$FORCE_RESET" != "true" ]; then
+    # Source existing .env to get current values (only if not resetting)
     source .env 2>/dev/null || true
     echo "  Found existing .env file - reusing credentials where available"
+elif [ "$FORCE_RESET" = "true" ]; then
+    echo "  Reset mode - generating completely fresh credentials"
+else
+    echo "  No existing .env file - generating fresh credentials"
 fi
 
 # Generate unified credentials (following easy_setup_v2.sh pattern exactly)
@@ -510,27 +520,27 @@ echo -e "${YELLOW}Model Configuration:${NC}"
 if [ "$DEPLOYMENT_MODE" = "1" ]; then
     # InsightsLM Legacy - always uses local models
     echo -e "InsightsLM Legacy mode - configuring local Ollama models"
-    read -p "Enter main model (press Enter for default: qwen3:8b-q4_K_M): " -r MAIN_MODEL
-    MAIN_MODEL=${MAIN_MODEL:-qwen3:8b-q4_K_M}
-    read -p "Enter embedding model (press Enter for default: nomic-embed-text): " -r EMBEDDING_MODEL
-    EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+    read -p "Enter main model (press Enter for default: $DEFAULT_LOCAL_MODEL): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}
+    read -p "Enter embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
 elif [ "$HYBRID_MODE" = true ]; then
-    # Hybrid mode - configure both external and local models
-    echo -e "Hybrid mode - configuring both external and local models"
+    # Hybrid mode - configure both local and external models (local first as foundation)
+    echo -e "Hybrid mode - configuring both local and external models"
+    
+    echo ""
+    echo -e "${YELLOW}Local Models (foundation for InsightsLM and local SOTA RAG):${NC}"
+    read -p "Enter local main model (press Enter for default: $DEFAULT_LOCAL_MODEL): " -r LOCAL_MAIN_MODEL
+    LOCAL_MAIN_MODEL=${LOCAL_MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}
+    read -p "Enter local embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r LOCAL_EMBEDDING_MODEL
+    LOCAL_EMBEDDING_MODEL=${LOCAL_EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
     
     echo ""
     echo -e "${YELLOW}External API Models (for SOTA RAG advanced features):${NC}"
-    read -p "Enter external main model (press Enter for default: gpt-4o): " -r EXTERNAL_MAIN_MODEL
-    EXTERNAL_MAIN_MODEL=${EXTERNAL_MAIN_MODEL:-gpt-4o}
-    read -p "Enter external embedding model (press Enter for default: text-embedding-3-small): " -r EXTERNAL_EMBEDDING_MODEL
-    EXTERNAL_EMBEDDING_MODEL=${EXTERNAL_EMBEDDING_MODEL:-text-embedding-3-small}
-    
-    echo ""
-    echo -e "${YELLOW}Local Models (for InsightsLM and local SOTA RAG):${NC}"
-    read -p "Enter local main model (press Enter for default: qwen3:8b-q4_K_M): " -r LOCAL_MAIN_MODEL
-    LOCAL_MAIN_MODEL=${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}
-    read -p "Enter local embedding model (press Enter for default: nomic-embed-text): " -r LOCAL_EMBEDDING_MODEL
-    LOCAL_EMBEDDING_MODEL=${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}
+    read -p "Enter external main model (press Enter for default: $DEFAULT_EXTERNAL_MODEL): " -r EXTERNAL_MAIN_MODEL
+    EXTERNAL_MAIN_MODEL=${EXTERNAL_MAIN_MODEL:-$DEFAULT_EXTERNAL_MODEL}
+    read -p "Enter external embedding model (press Enter for default: $DEFAULT_EXTERNAL_EMBEDDING): " -r EXTERNAL_EMBEDDING_MODEL
+    EXTERNAL_EMBEDDING_MODEL=${EXTERNAL_EMBEDDING_MODEL:-$DEFAULT_EXTERNAL_EMBEDDING}
     
     # Set primary models (external for SOTA RAG, local for InsightsLM)
     MAIN_MODEL=$EXTERNAL_MAIN_MODEL
@@ -538,17 +548,17 @@ elif [ "$HYBRID_MODE" = true ]; then
 elif [ "$USE_EXTERNAL_APIS" = true ]; then
     # External APIs only
     echo -e "External API mode - configuring OpenAI models"
-    read -p "Enter main model (press Enter for default: gpt-4o): " -r MAIN_MODEL
-    MAIN_MODEL=${MAIN_MODEL:-gpt-4o}
-    read -p "Enter embedding model (press Enter for default: text-embedding-3-small): " -r EMBEDDING_MODEL
-    EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+    read -p "Enter main model (press Enter for default: $DEFAULT_EXTERNAL_MODEL): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_EXTERNAL_MODEL}
+    read -p "Enter embedding model (press Enter for default: $DEFAULT_EXTERNAL_EMBEDDING): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EXTERNAL_EMBEDDING}
 else
     # Local-only mode
     echo -e "Local mode - configuring Ollama models"
-    read -p "Enter main model (press Enter for default: qwen3:8b-q4_K_M): " -r MAIN_MODEL
-    MAIN_MODEL=${MAIN_MODEL:-qwen3:8b-q4_K_M}
-    read -p "Enter embedding model (press Enter for default: nomic-embed-text): " -r EMBEDDING_MODEL
-    EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+    read -p "Enter main model (press Enter for default: $DEFAULT_LOCAL_MODEL): " -r MAIN_MODEL
+    MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}
+    read -p "Enter embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
+    EMBEDDING_MODEL=${EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}
 fi
 
 # 3. SOTA RAG Feature Configuration (only if deploying SOTA RAG)
@@ -971,8 +981,8 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
 
         # 3. Pre-pull models while we can (before container manages Ollama)
         # Always use local models for Ollama (following easy_setup_v2.sh pattern)
-        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}"
-        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}"
+        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}"
+        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}"
         
         echo "  Pre-pulling local models $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL..."
         # Start Ollama temporarily just for pulling
@@ -1201,8 +1211,8 @@ NGINX_CONF
         
         # Update x-init-ollama to pull selected models for Linux
         # Always use local models for Ollama (following easy_setup_v2.sh pattern)
-        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-qwen3:8b-q4_K_M}"
-        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-nomic-embed-text}"
+        LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}"
+        LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}"
         
         echo "  Configuring Ollama to pull local models..."
         OLLAMA_COMMAND="echo 'Waiting for Ollama to be ready...'; for i in {1..60}; do if nc -z ollama 11434 2>/dev/null; then echo 'Ollama ready, pulling models...'; break; fi; sleep 1; done; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_MAIN_MODEL; OLLAMA_HOST=ollama:11434 ollama pull $LOCAL_EMBEDDING_MODEL"
@@ -1542,8 +1552,8 @@ config = {
     'multimodal': os.environ.get('ENABLE_MULTIMODAL', 'false') == 'true', 
     'contextual': os.environ.get('ENABLE_CONTEXTUAL', 'true') == 'true',
     'use_external_apis': os.environ.get('USE_EXTERNAL_APIS', 'false') == 'true',
-    'main_model': os.environ.get('MAIN_MODEL', 'qwen3:8b-q4_K_M'),
-    'embedding_model': os.environ.get('EMBEDDING_MODEL', 'nomic-embed-text'),
+    'main_model': os.environ.get('MAIN_MODEL', '$DEFAULT_LOCAL_MODEL'),
+    'embedding_model': os.environ.get('EMBEDDING_MODEL', '$DEFAULT_EMBEDDING_MODEL'),
     'access_host': os.environ.get('ACCESS_HOST', 'localhost'),
     'lightrag_url': os.environ.get('LIGHTRAG_SERVER_URL', '')
 }
@@ -2229,8 +2239,8 @@ if [ "$WORKFLOW_COUNT" -gt 0 ]; then
         echo "    Updating main model references to $MAIN_MODEL..."
         MAIN_MODEL_UPDATES=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
         UPDATE workflow_entity 
-        SET nodes = REPLACE(nodes::text, '\"model\": \"qwen3:8b-q4_K_M\"', '\"model\": \"$MAIN_MODEL\"')::jsonb
-        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%qwen3:8b-q4_K_M%'
+        SET nodes = REPLACE(nodes::text, '\"model\": \"$DEFAULT_LOCAL_MODEL\"', '\"model\": \"$MAIN_MODEL\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%$DEFAULT_LOCAL_MODEL%'
         RETURNING id;" 2>/dev/null | wc -l)
         echo "      Updated main model in $MAIN_MODEL_UPDATES workflows"
 
@@ -2244,18 +2254,18 @@ if [ "$WORKFLOW_COUNT" -gt 0 ]; then
 
         echo "    Updating embedding model references to $EMBEDDING_MODEL..."
 
-        # Update nomic-embed-text:latest references
+        # Update $DEFAULT_EMBEDDING_MODEL:latest references
         EMBED_UPDATES_1=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
         UPDATE workflow_entity 
-        SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text:latest\"', '\"model\": \"$EMBEDDING_MODEL_WITH_LATEST\"')::jsonb
-        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%nomic-embed-text:latest%'
+        SET nodes = REPLACE(nodes::text, '\"model\": \"$DEFAULT_EMBEDDING_MODEL:latest\"', '\"model\": \"$EMBEDDING_MODEL_WITH_LATEST\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%$DEFAULT_EMBEDDING_MODEL:latest%'
         RETURNING id;" 2>/dev/null | wc -l)
 
-        # Update nomic-embed-text references (without :latest)
+        # Update $DEFAULT_EMBEDDING_MODEL references (without :latest)
         EMBED_UPDATES_2=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "
         UPDATE workflow_entity 
-        SET nodes = REPLACE(nodes::text, '\"model\": \"nomic-embed-text\"', '\"model\": \"$EMBEDDING_MODEL\"')::jsonb
-        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"nomic-embed-text\"%' AND nodes::text NOT LIKE '%nomic-embed-text:latest%'
+        SET nodes = REPLACE(nodes::text, '\"model\": \"$DEFAULT_EMBEDDING_MODEL\"', '\"model\": \"$EMBEDDING_MODEL\"')::jsonb
+        WHERE name LIKE 'InsightsLM%' AND nodes::text LIKE '%\"model\": \"$DEFAULT_EMBEDDING_MODEL\"%' AND nodes::text NOT LIKE '%$DEFAULT_EMBEDDING_MODEL:latest%'
         RETURNING id;" 2>/dev/null | wc -l)
 
         echo "      Updated embedding model in $((EMBED_UPDATES_1 + EMBED_UPDATES_2)) workflow instances"
@@ -2541,14 +2551,14 @@ EOF
                 if [ "$USE_EXTERNAL_APIS" = false ]; then
                     echo "    → Updating SOTA RAG workflows to use local Ollama models..."
                     
-                    # Update main model references (gpt-4o -> user selected model)
+                    # Update main model references ($DEFAULT_EXTERNAL_MODEL -> user selected model)
                     echo "      Updating main model references to $MAIN_MODEL..."
                     MAIN_MODEL_UPDATES=$(docker exec supabase-db psql -t -A -U supabase_admin -d postgres -c "
                     UPDATE workflow_entity 
                     SET nodes = REPLACE(
                         REPLACE(
                             REPLACE(nodes::text, 
-                                '\"model\": \"gpt-4o\"', '\"model\": \"$MAIN_MODEL\"'),
+                                '\"model\": \"$DEFAULT_EXTERNAL_MODEL\"', '\"model\": \"$MAIN_MODEL\"'),
                                 '\"model\": \"gpt-5\"', '\"model\": \"$MAIN_MODEL\"'),
                                 '\"value\": \"gpt-4\"', '\"value\": \"$MAIN_MODEL\"')::jsonb
                     WHERE name LIKE '%SOTA%' AND (nodes::text LIKE '%gpt-4%' OR nodes::text LIKE '%gpt-5%')
@@ -2561,7 +2571,7 @@ EOF
                     UPDATE workflow_entity 
                     SET nodes = REPLACE(
                         REPLACE(nodes::text, 
-                            '\"text-embedding-3-small\"', '\"$EMBEDDING_MODEL\"'),
+                            '\"$DEFAULT_EXTERNAL_EMBEDDING\"', '\"$EMBEDDING_MODEL\"'),
                             '\"text-embedding-ada-002\"', '\"$EMBEDDING_MODEL\"')::jsonb
                     WHERE name LIKE '%SOTA%' AND (nodes::text LIKE '%text-embedding-%')
                     RETURNING id;" 2>/dev/null | wc -l | tr -d ' ')
