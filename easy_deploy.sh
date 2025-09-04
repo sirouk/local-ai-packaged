@@ -934,85 +934,9 @@ else
     echo "Starting all services with profile: $PROFILE..."
     python3 start_services.py --profile "$PROFILE" --environment private || true
 
-    # Start host Ollama for macOS if needed (following easy_setup_v2.sh pattern)
-    # Debug: Show the current state of local API variables
-    echo "  Debug: IS_MACOS=$IS_MACOS, USE_LOCAL_APIS=$USE_LOCAL_APIS, USE_EXTERNAL_APIS=$USE_EXTERNAL_APIS"
-    
-    if [ "$IS_MACOS" = true ] && ([ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]); then
-        echo "  → Starting host Ollama for macOS..."
-        echo "    Waiting for Docker services to be ready..."
-        
-        # Wait for Docker services to be fully ready before starting Ollama
-        echo "    Waiting for Docker Ollama proxy container to be ready..."
-        CONTAINER_READY=false
-        for i in {1..60}; do
-            if docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up.*healthy"; then
-                echo "    Docker Ollama proxy container is ready"
-                CONTAINER_READY=true
-                break
-            elif docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up"; then
-                echo "    Docker Ollama proxy container is running but not yet healthy (attempt $i/60)"
-            else
-                echo "    Docker Ollama proxy container not found, waiting for Docker Compose to create it (attempt $i/60)"
-            fi
-            sleep 2
-        done
-        
-        if [ "$CONTAINER_READY" = false ]; then
-            echo "    ⚠️  Docker Ollama proxy container not ready after 2 minutes"
-            echo "    Proceeding anyway - host Ollama may still work with direct connection"
-        fi
-        
-        # Start host Ollama with retry logic
-        OLLAMA_STARTED=false
-        for attempt in {1..3}; do
-            echo "    Attempt $attempt: Starting host Ollama..."
-            if ./ollama-proxy/start-host-ollama.sh; then
-                # Verify Ollama is actually working
-                sleep 5
-                if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
-                    echo "    ✅ Host Ollama started successfully and responding"
-                    OLLAMA_STARTED=true
-                    break
-                else
-                    echo "    Ollama started but not responding, retrying..."
-                fi
-            else
-                echo "    Startup script failed, retrying in 5 seconds..."
-                sleep 5
-            fi
-        done
-        
-        if [ "$OLLAMA_STARTED" = true ]; then
-            # Start the container watcher
-            nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
-            
-            # Verify the configured models are available
-            echo "    Verifying configured models are available..."
-            LOCAL_MAIN="${LOCAL_MAIN_MODEL:-$MAIN_MODEL}"
-            LOCAL_EMBED="${LOCAL_EMBEDDING_MODEL:-$EMBEDDING_MODEL}"
-            
-            if ollama list | grep -q "$LOCAL_MAIN"; then
-                echo "    ✅ Main model '$LOCAL_MAIN' is available"
-            else
-                echo "    ⚠️  Main model '$LOCAL_MAIN' not found, attempting to pull..."
-                ollama pull "$LOCAL_MAIN" || echo "    ❌ Failed to pull main model"
-            fi
-            
-            if ollama list | grep -q "$LOCAL_EMBED"; then
-                echo "    ✅ Embedding model '$LOCAL_EMBED' is available" 
-            else
-                echo "    ⚠️  Embedding model '$LOCAL_EMBED' not found, attempting to pull..."
-                ollama pull "$LOCAL_EMBED" || echo "    ❌ Failed to pull embedding model"
-            fi
-            
-            echo "    ✅ Host Ollama started and watcher launched"
-        else
-            echo -e "${RED}    ❌ Failed to start host Ollama after 3 attempts${NC}"
-            echo "    Please run manually: ./ollama-proxy/start-host-ollama.sh"
-            echo "    System will continue but local models may not work until Ollama is started"
-        fi
-    fi
+    # Note: Host Ollama for macOS will be started in the Ollama configuration section
+    # following easy_setup_v2.sh pattern exactly - no premature startup here
+    echo "  Note: macOS host Ollama will be configured and started in the dedicated Ollama section"
 fi
 
 # Ensure n8n is running
@@ -1065,44 +989,26 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
             brew install ollama
         fi
 
-        # 2. Stop any existing Ollama processes first (clean slate)
+        # 2. DON'T start Ollama here - let the proxy service manage it (following easy_setup_v2.sh pattern)
+        echo "  Ollama will be managed by the Docker proxy service"
+        
+        # 3. Stop any existing Ollama processes first (clean slate)
         echo "  Stopping any existing Ollama processes..."
         pkill -f "ollama serve" 2>/dev/null || true
         sleep 2
 
-        # 3. Pre-pull models while we can (before container manages Ollama)
+        # 4. Pre-pull models while we can (before container manages Ollama)
         # Always use local models for Ollama (following easy_setup_v2.sh pattern)
         LOCAL_MAIN_MODEL="${LOCAL_MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}"
         LOCAL_EMBEDDING_MODEL="${LOCAL_EMBEDDING_MODEL:-$DEFAULT_EMBEDDING_MODEL}"
         
-        echo "  Pre-pulling local models $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL..."
+        echo "  Pre-pulling models $LOCAL_MAIN_MODEL and $LOCAL_EMBEDDING_MODEL..."
         # Start Ollama temporarily just for pulling
         ollama serve > /tmp/ollama-pull.log 2>&1 &
         TEMP_OLLAMA_PID=$!
-        
-        # Wait for Ollama to be ready before pulling models
-        echo "  Waiting for temporary Ollama to be ready..."
-        for i in {1..30}; do
-            if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
-                echo "  Ollama is ready, pulling models..."
-                break
-            fi
-            sleep 2
-        done
-        
-        # Pull models with better error handling
-        if ollama pull "$LOCAL_MAIN_MODEL"; then
-            echo "  ✅ Successfully pulled main model: $LOCAL_MAIN_MODEL"
-        else
-            echo "  ⚠️  Failed to pull main model: $LOCAL_MAIN_MODEL (will retry later)"
-        fi
-        
-        if ollama pull "$LOCAL_EMBEDDING_MODEL"; then
-            echo "  ✅ Successfully pulled embedding model: $LOCAL_EMBEDDING_MODEL"
-        else
-            echo "  ⚠️  Failed to pull embedding model: $LOCAL_EMBEDDING_MODEL (will retry later)"
-        fi
-        
+        sleep 3
+        ollama pull "$LOCAL_MAIN_MODEL" || true
+        ollama pull "$LOCAL_EMBEDDING_MODEL" || true
         # Stop the temporary Ollama
         kill $TEMP_OLLAMA_PID 2>/dev/null || true
         sleep 2
@@ -1197,11 +1103,14 @@ STOP_HOST_OLLAMA
 
         chmod +x ollama-proxy/stop-host-ollama.sh
         
-        # Create container watcher script
+        # Create bidirectional container watcher script
         cat > ollama-proxy/watch-ollama-container.sh << 'WATCH_OLLAMA'
 #!/bin/bash
 set -e
 LOG_FILE="/tmp/ollama-container-watch.log"
+PID_FILE="/tmp/ollama-host.pid"
+
+echo "Starting bidirectional Ollama lifecycle management..." | tee -a "$LOG_FILE"
 
 # Wait for Docker to be available
 for i in {1..30}; do
@@ -1211,8 +1120,28 @@ for i in {1..30}; do
   sleep 1
 done
 
-# Listen for events on the specific container name
-# When the container stops/dies, stop Ollama on host
+# Function to check if host Ollama is running and responsive
+check_host_ollama() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if kill -0 "$PID" 2>/dev/null && curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
+            return 0  # Running and responsive
+        fi
+    fi
+    return 1  # Not running or not responsive
+}
+
+# Function to restart host Ollama
+restart_host_ollama() {
+    echo "Restarting host Ollama..." | tee -a "$LOG_FILE"
+    bash ./ollama-proxy/start-host-ollama.sh 2>>"$LOG_FILE" || {
+        echo "Failed to restart host Ollama" | tee -a "$LOG_FILE"
+        return 1
+    }
+    return 0
+}
+
+# Start background Docker container monitoring
 (docker events --filter container=ollama --format '{{.Action}}' 2>>"$LOG_FILE" | while read -r action; do
   case "$action" in
     stop|die|kill)
@@ -1220,16 +1149,54 @@ done
       bash ./ollama-proxy/stop-host-ollama.sh || true
       exit 0
       ;;
+    start)
+      echo "Detected ollama container start — ensuring host Ollama is running" | tee -a "$LOG_FILE"
+      if ! check_host_ollama; then
+          restart_host_ollama || true
+      fi
+      ;;
     *)
       echo "Event: $action" >>"$LOG_FILE"
       ;;
   esac
 done) &
+DOCKER_WATCHER_PID=$!
+
+# Start background host Ollama monitoring
+(while true; do
+    sleep 30  # Check every 30 seconds
+    
+    # Only check if Docker container is running
+    if docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up"; then
+        if ! check_host_ollama; then
+            echo "Host Ollama died - attempting restart..." | tee -a "$LOG_FILE"
+            if restart_host_ollama; then
+                echo "Host Ollama restarted successfully" | tee -a "$LOG_FILE"
+            else
+                echo "Failed to restart host Ollama - will retry in 30s" | tee -a "$LOG_FILE"
+            fi
+        fi
+    else
+        echo "Docker container not running - stopping host monitoring" | tee -a "$LOG_FILE"
+        break
+    fi
+done) &
+HOST_WATCHER_PID=$!
+
+echo "Bidirectional watcher started (Docker PID=$DOCKER_WATCHER_PID, Host PID=$HOST_WATCHER_PID)" | tee -a "$LOG_FILE"
+
+# Wait for either watcher to exit
+wait $DOCKER_WATCHER_PID $HOST_WATCHER_PID
 WATCH_OLLAMA
 
         chmod +x ollama-proxy/watch-ollama-container.sh
         
         echo -e "${GREEN}✓ Ollama lifecycle scripts created${NC}"
+        
+        # 4. Start Ollama on host and launch watcher (following easy_setup_v2.sh pattern exactly)
+        echo "  Starting Ollama on host and launching watcher..."
+        ./ollama-proxy/start-host-ollama.sh
+        nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
         
         # 5. Configure Docker Compose for macOS proxy service
         echo "  Configuring Docker Compose for Ollama proxy service..."
