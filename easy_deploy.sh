@@ -1356,7 +1356,7 @@ if [ "$DEPLOY_INSIGHTSLM" = true ]; then
     echo "Running InsightsLM database migration..."
     docker cp insights-lm-local-package/supabase-migration.sql supabase-db:/tmp/migration.sql
     docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/migration.sql >/dev/null 2>&1 || true
-    echo "    ✓ InsightsLM database schema applied"
+    echo "    ✓ InsightsLM database schema applied (includes markdown file support)"
 fi
 
 # Apply SOTA RAG specific database tables (only if deploying SOTA RAG)
