@@ -914,14 +914,71 @@ else
     python3 start_services.py --profile "$PROFILE" --environment private || true
 
     # Start host Ollama for macOS if needed (following easy_setup_v2.sh pattern)
+    # Debug: Show the current state of local API variables
+    echo "  Debug: IS_MACOS=$IS_MACOS, USE_LOCAL_APIS=$USE_LOCAL_APIS, USE_EXTERNAL_APIS=$USE_EXTERNAL_APIS"
+    
     if [ "$IS_MACOS" = true ] && ([ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]); then
         echo "  → Starting host Ollama for macOS..."
-        ./ollama-proxy/start-host-ollama.sh || {
-            echo "    Warning: Could not start host Ollama automatically"
-            echo "    You may need to run: ./ollama-proxy/start-host-ollama.sh manually"
-        }
-        nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
-        echo "    ✅ Host Ollama started and watcher launched"
+        echo "    Waiting for Docker services to be ready..."
+        
+        # Wait for Docker services to be fully ready before starting Ollama
+        for i in {1..30}; do
+            if docker ps --filter "name=ollama" --format "{{.Status}}" | grep -q "Up.*healthy"; then
+                echo "    Docker Ollama proxy container is ready"
+                break
+            fi
+            sleep 2
+        done
+        
+        # Start host Ollama with retry logic
+        OLLAMA_STARTED=false
+        for attempt in {1..3}; do
+            echo "    Attempt $attempt: Starting host Ollama..."
+            if ./ollama-proxy/start-host-ollama.sh; then
+                # Verify Ollama is actually working
+                sleep 5
+                if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
+                    echo "    ✅ Host Ollama started successfully and responding"
+                    OLLAMA_STARTED=true
+                    break
+                else
+                    echo "    Ollama started but not responding, retrying..."
+                fi
+            else
+                echo "    Startup script failed, retrying in 5 seconds..."
+                sleep 5
+            fi
+        done
+        
+        if [ "$OLLAMA_STARTED" = true ]; then
+            # Start the container watcher
+            nohup ./ollama-proxy/watch-ollama-container.sh >/dev/null 2>&1 &
+            
+            # Verify the configured models are available
+            echo "    Verifying configured models are available..."
+            LOCAL_MAIN="${LOCAL_MAIN_MODEL:-$MAIN_MODEL}"
+            LOCAL_EMBED="${LOCAL_EMBEDDING_MODEL:-$EMBEDDING_MODEL}"
+            
+            if ollama list | grep -q "$LOCAL_MAIN"; then
+                echo "    ✅ Main model '$LOCAL_MAIN' is available"
+            else
+                echo "    ⚠️  Main model '$LOCAL_MAIN' not found, attempting to pull..."
+                ollama pull "$LOCAL_MAIN" || echo "    ❌ Failed to pull main model"
+            fi
+            
+            if ollama list | grep -q "$LOCAL_EMBED"; then
+                echo "    ✅ Embedding model '$LOCAL_EMBED' is available" 
+            else
+                echo "    ⚠️  Embedding model '$LOCAL_EMBED' not found, attempting to pull..."
+                ollama pull "$LOCAL_EMBED" || echo "    ❌ Failed to pull embedding model"
+            fi
+            
+            echo "    ✅ Host Ollama started and watcher launched"
+        else
+            echo -e "${RED}    ❌ Failed to start host Ollama after 3 attempts${NC}"
+            echo "    Please run manually: ./ollama-proxy/start-host-ollama.sh"
+            echo "    System will continue but local models may not work until Ollama is started"
+        fi
     fi
 fi
 
@@ -988,9 +1045,30 @@ if [ "$USE_LOCAL_APIS" = true ] || [ "$USE_EXTERNAL_APIS" = false ]; then
         # Start Ollama temporarily just for pulling
         ollama serve > /tmp/ollama-pull.log 2>&1 &
         TEMP_OLLAMA_PID=$!
-        sleep 3
-        ollama pull "$LOCAL_MAIN_MODEL" || true
-        ollama pull "$LOCAL_EMBEDDING_MODEL" || true
+        
+        # Wait for Ollama to be ready before pulling models
+        echo "  Waiting for temporary Ollama to be ready..."
+        for i in {1..30}; do
+            if curl -s http://localhost:11434/api/version >/dev/null 2>&1; then
+                echo "  Ollama is ready, pulling models..."
+                break
+            fi
+            sleep 2
+        done
+        
+        # Pull models with better error handling
+        if ollama pull "$LOCAL_MAIN_MODEL"; then
+            echo "  ✅ Successfully pulled main model: $LOCAL_MAIN_MODEL"
+        else
+            echo "  ⚠️  Failed to pull main model: $LOCAL_MAIN_MODEL (will retry later)"
+        fi
+        
+        if ollama pull "$LOCAL_EMBEDDING_MODEL"; then
+            echo "  ✅ Successfully pulled embedding model: $LOCAL_EMBEDDING_MODEL"
+        else
+            echo "  ⚠️  Failed to pull embedding model: $LOCAL_EMBEDDING_MODEL (will retry later)"
+        fi
+        
         # Stop the temporary Ollama
         kill $TEMP_OLLAMA_PID 2>/dev/null || true
         sleep 2
