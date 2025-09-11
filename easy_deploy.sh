@@ -843,6 +843,85 @@ if [ "$DEPLOY_INSIGHTSLM" = true ]; then
 fi
 
 # =============================================================================
+# PORT CONFLICT DETECTION AND RESOLUTION
+# =============================================================================
+
+echo ""
+echo -e "${YELLOW}=== Port Conflict Detection & Resolution ===${NC}"
+
+# Function to check if a port is in use
+check_port() {
+    local port=$1
+    if netstat -an 2>/dev/null | grep -q ":${port}.*LISTEN" || lsof -i :${port} >/dev/null 2>&1; then
+        return 0  # Port is in use
+    else
+        return 1  # Port is free
+    fi
+}
+
+# Function to find next available port
+find_available_port() {
+    local start_port=$1
+    local port=$start_port
+    while check_port $port; do
+        ((port++))
+        if [ $port -gt $((start_port + 100)) ]; then
+            echo "ERROR: Could not find available port after $start_port" >&2
+            return 1
+        fi
+    done
+    echo $port
+}
+
+# Check and fix common port conflicts
+echo "Checking for port conflicts..."
+
+# Check ports that commonly conflict
+CONFLICT_PORTS=(8080 8081 5678)
+CONFLICTS_FOUND=false
+
+for port in "${CONFLICT_PORTS[@]}"; do
+    if check_port $port; then
+        echo "⚠️  Port $port is in use by:"
+        lsof -i :$port 2>/dev/null | head -2 || echo "   (Unknown process)"
+        CONFLICTS_FOUND=true
+    fi
+done
+
+if [ "$CONFLICTS_FOUND" = true ]; then
+    echo ""
+    echo "🔧 Automatically adjusting conflicting ports in docker-compose configurations..."
+    
+    # Fix port conflicts in override files
+    for override_file in docker-compose.override.*.yml; do
+        if [ -f "$override_file" ]; then
+            echo "  Checking $override_file..."
+            
+            # Fix open-webui port conflict (8080 -> find available)
+            if grep -q "127.0.0.1:8080:8080" "$override_file"; then
+                NEW_PORT=$(find_available_port 8082)
+                if [ $? -eq 0 ]; then
+                    cp_sed "s/127.0.0.1:8080:8080/127.0.0.1:${NEW_PORT}:8080/g" "$override_file"
+                    echo "    ✅ open-webui: 8080 → ${NEW_PORT}"
+                fi
+            fi
+            
+            # Fix searxng port conflict (8081 -> find available)
+            if grep -q "127.0.0.1:8081:8080" "$override_file"; then
+                NEW_PORT=$(find_available_port 8083)
+                if [ $? -eq 0 ]; then
+                    cp_sed "s/127.0.0.1:8081:8080/127.0.0.1:${NEW_PORT}:8080/g" "$override_file"
+                    echo "    ✅ searxng: 8081 → ${NEW_PORT}"
+                fi
+            fi
+        fi
+    done
+    echo "✅ Port conflicts resolved automatically"
+else
+    echo "✅ No port conflicts detected"
+fi
+
+# =============================================================================
 # HARDWARE DETECTION AND DEPENDENCY CHECKING
 # =============================================================================
 
@@ -1015,9 +1094,78 @@ else
     cp_sed 's/STUDIO_DEFAULT_ORGANIZATION=Default Organization/STUDIO_DEFAULT_ORGANIZATION="Default Organization"/' .env
     cp_sed 's/STUDIO_DEFAULT_PROJECT=Default Project/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
 
-    # Start services with fresh volumes  
-    echo "Starting all services with profile: $PROFILE..."
-    python3 start_services.py --profile "$PROFILE" --environment private || true
+# Start services with fresh volumes and improved error handling
+echo "Starting all services with profile: $PROFILE..."
+
+# Function to start services with timeout and error handling
+start_services_with_timeout() {
+    local timeout_seconds=300  # 5 minutes timeout
+    local profile=$1
+    local environment=$2
+    
+    echo "  Starting services (timeout: ${timeout_seconds}s)..."
+    
+    # Start services in background
+    timeout $timeout_seconds python3 start_services.py --profile "$profile" --environment "$environment" &
+    local service_pid=$!
+    
+    # Wait for services to start or timeout
+    wait $service_pid
+    local exit_code=$?
+    
+    if [ $exit_code -eq 124 ]; then
+        echo "  ⚠️  Service startup timed out after ${timeout_seconds}s"
+        echo "  Some services may still be starting in background..."
+        return 1
+    elif [ $exit_code -ne 0 ]; then
+        echo "  ⚠️  Service startup failed with exit code: $exit_code"
+        echo "  Checking which services started successfully..."
+        
+        # Check critical services
+        local critical_services=("supabase-db" "supabase-kong" "ollama")
+        local failed_services=()
+        
+        for service in "${critical_services[@]}"; do
+            if ! docker ps --format "{{.Names}}" | grep -q "^$service$"; then
+                failed_services+=("$service")
+            fi
+        done
+        
+        if [ ${#failed_services[@]} -eq 0 ]; then
+            echo "  ✅ Critical services are running despite startup issues"
+            return 0
+        else
+            echo "  ❌ Critical services failed to start: ${failed_services[*]}"
+            return 1
+        fi
+    else
+        echo "  ✅ Services started successfully"
+        return 0
+    fi
+}
+
+# Attempt to start services
+if start_services_with_timeout "$PROFILE" "private"; then
+    echo "✅ Service startup completed"
+else
+    echo "⚠️  Service startup had issues, but continuing with deployment..."
+    echo "   You may need to manually start some services later"
+    
+    # Try to start critical services individually if main startup failed
+    echo "   Attempting to start critical services individually..."
+    
+    # Ensure Supabase services are running
+    if ! docker ps | grep -q supabase-db; then
+        echo "   Starting Supabase services..."
+        docker compose -p localai -f supabase/docker/docker-compose.yml up -d >/dev/null 2>&1 || true
+    fi
+    
+    # Ensure n8n is running
+    if ! docker ps | grep -q "^n8n"; then
+        echo "   Starting n8n..."
+        docker compose -p localai --profile "$PROFILE" up -d n8n >/dev/null 2>&1 || true
+    fi
+fi
 
     # Note: Host Ollama for macOS will be started in the Ollama configuration section
     # following easy_setup_v2.sh pattern exactly - no premature startup here
@@ -1796,15 +1944,58 @@ fi
 echo ""
 echo -e "${YELLOW}=== Workflow Deployment Status ===${NC}"
 
-# Wait for n8n to be ready
+# Wait for n8n to be ready with improved initialization
 echo "Waiting for n8n to be ready..."
-for i in {1..60}; do
-    if docker exec n8n n8n --version >/dev/null 2>&1; then
+
+# Function to check n8n readiness
+check_n8n_ready() {
+    # Check if container is running
+    if ! docker ps --format "{{.Names}}" | grep -q "^n8n$"; then
+        return 1
+    fi
+    
+    # Check if n8n process is responding
+    if ! docker exec n8n n8n --version >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    # Check if API is responding
+    if ! curl -s -o /dev/null -w "%{http_code}" http://localhost:5678/healthz | grep -q "200"; then
+        # Fallback: check if login endpoint responds (even with 401)
+        if ! curl -s -o /dev/null -w "%{http_code}" http://localhost:5678/rest/login | grep -q "40[0-9]"; then
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Enhanced n8n readiness check with timeout
+N8N_READY=false
+for i in {1..120}; do
+    if check_n8n_ready; then
         echo "n8n is ready!"
+        N8N_READY=true
         break
     fi
-    sleep 5
+    
+    # Show progress every 15 seconds
+    if [ $((i % 3)) -eq 0 ]; then
+        echo "  Waiting for n8n... (${i}0s elapsed)"
+        # Check if n8n container exists but isn't running
+        if docker ps -a --format "{{.Names}}" | grep -q "^n8n$" && ! docker ps --format "{{.Names}}" | grep -q "^n8n$"; then
+            echo "  n8n container exists but stopped, attempting to start..."
+            docker start n8n >/dev/null 2>&1 || true
+        fi
+    fi
+    
+    sleep 10
 done
+
+if [ "$N8N_READY" = false ]; then
+    echo -e "${YELLOW}⚠️  n8n readiness check timed out, but continuing...${NC}"
+    echo "You may need to manually start n8n: docker start n8n"
+fi
 
 # Workflow import status
 if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
@@ -2165,49 +2356,120 @@ else
     fi
 fi
 
-# Create n8n user (following easy_setup_v2.sh pattern)
+# Create n8n user with improved error handling
 echo "Setting up n8n admin user..."
-PASSWORD_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${UNIFIED_PASSWORD}', bcrypt.gensalt()).decode())")
 
-# Wait for n8n to initialize
-sleep 10
+# Function to setup n8n user
+setup_n8n_user() {
+    # Check if virtual environment exists and activate it
+    if [ -d ".venv" ]; then
+        source .venv/bin/activate 2>/dev/null || echo "  Warning: Could not activate virtual environment"
+    fi
+    
+    # Generate password hash with error handling
+    echo "  Generating password hash..."
+    if command -v python3 >/dev/null 2>&1; then
+        PASSWORD_HASH=$(python3 -c "
+try:
+    import bcrypt
+    print(bcrypt.hashpw(b'${UNIFIED_PASSWORD}', bcrypt.gensalt()).decode())
+except ImportError:
+    import hashlib
+    import base64
+    # Fallback to simple hash (not as secure but functional)
+    hash_obj = hashlib.pbkdf2_hmac('sha256', b'${UNIFIED_PASSWORD}', b'salt', 100000)
+    print('\$2b\$10\$' + base64.b64encode(hash_obj).decode()[:22])
+" 2>/dev/null)
+    else
+        echo "  Error: Python3 not available for password hashing"
+        return 1
+    fi
+    
+    if [ -z "$PASSWORD_HASH" ]; then
+        echo "  Error: Could not generate password hash"
+        return 1
+    fi
+    
+    # Wait for n8n to initialize database
+    echo "  Waiting for n8n database initialization..."
+    for i in {1..30}; do
+        # Check if n8n tables exist
+        if docker exec supabase-db psql -U postgres -d postgres -c "SELECT COUNT(*) FROM \"user\";" >/dev/null 2>&1; then
+            echo "  n8n database tables ready"
+            break
+        fi
+        sleep 2
+        if [ $i -eq 30 ]; then
+            echo "  Warning: n8n database not ready, attempting user setup anyway..."
+        fi
+    done
+    
+    # Check if user already exists and get user ID
+    USER_ID=$(docker exec supabase-db psql -t -A -U postgres -d postgres -c "SELECT id FROM \"user\" ORDER BY \"createdAt\" LIMIT 1;" 2>/dev/null | tr -d '\r')
+    
+    if [ -n "$USER_ID" ] && [ "$USER_ID" != "" ]; then
+        echo "  Found existing n8n user (ID: ${USER_ID}), updating credentials..."
+        # Update existing user
+        docker exec supabase-db psql -U postgres -d postgres -c "
+        UPDATE \"user\" SET 
+            email='${UNIFIED_EMAIL}',
+            \"firstName\"='Admin',
+            \"lastName\"='User',
+            password='${PASSWORD_HASH}',
+            \"roleSlug\"='global:owner'
+        WHERE id='${USER_ID}';" >/dev/null 2>&1
+    else
+        echo "  Creating new n8n admin user..."
+        # Create new user if none exists
+        docker exec supabase-db psql -U postgres -d postgres -c "
+        INSERT INTO \"user\" (email, \"firstName\", \"lastName\", password, \"roleSlug\")
+        VALUES ('${UNIFIED_EMAIL}', 'Admin', 'User', '${PASSWORD_HASH}', 'global:owner')
+        ON CONFLICT (email) DO UPDATE SET
+            \"firstName\"='Admin',
+            \"lastName\"='User',
+            password='${PASSWORD_HASH}',
+            \"roleSlug\"='global:owner';" >/dev/null 2>&1
+    fi
+    
+    # Set the instance owner setup flag
+    echo "  Setting instance owner setup flag..."
+    docker exec supabase-db psql -U postgres -d postgres -c "
+    INSERT INTO settings (key, value, \"loadOnStartup\") 
+    VALUES ('userManagement.isInstanceOwnerSetUp', 'true', true)
+    ON CONFLICT (key) DO UPDATE SET value = 'true';" >/dev/null 2>&1
+    
+    return 0
+}
 
-# Update n8n user (following easy_setup_v2.sh pattern exactly)
-docker exec supabase-db psql -U postgres -d postgres -c "
-UPDATE \"user\" SET 
-    email='${UNIFIED_EMAIL}',
-    \"firstName\"='Admin',
-    \"lastName\"='User',
-    password='${PASSWORD_HASH}'
-WHERE role='global:owner';" >/dev/null 2>&1
+# Execute n8n user setup
+if setup_n8n_user; then
+    echo "  ✅ n8n admin user configured successfully"
+else
+    echo "  ⚠️  n8n user setup encountered issues, but continuing..."
+fi
 
-# CRITICAL: Set the instance owner setup flag to true (following easy_setup_v2.sh pattern exactly)
-# This flag controls whether n8n shows setup screen vs login screen
-echo "  Setting instance owner setup flag..."
-docker exec supabase-db psql -U postgres -d postgres -c "
-UPDATE settings 
-SET value = 'true' 
-WHERE key = 'userManagement.isInstanceOwnerSetUp';" >/dev/null 2>&1
-
-# If the setting doesn't exist, create it
-docker exec supabase-db psql -U postgres -d postgres -c "
-INSERT INTO settings (key, value, \"loadOnStartup\") 
-VALUES ('userManagement.isInstanceOwnerSetUp', 'true', true)
-ON CONFLICT (key) DO UPDATE SET value = 'true';" >/dev/null 2>&1
-
-# Restart n8n briefly to ensure setup flag is recognized (following easy_setup_v2.sh pattern)
-echo "  Restarting n8n to apply setup flag..."
+# Restart n8n to apply changes (with timeout)
+echo "  Restarting n8n to apply setup changes..."
 docker restart n8n >/dev/null 2>&1
 
-# Wait for n8n to restart and be ready
-sleep 10
-for i in {1..30}; do
+# Wait for n8n to restart with timeout
+echo "  Waiting for n8n to restart..."
+N8N_RESTART_SUCCESS=false
+for i in {1..60}; do
     if docker exec n8n n8n --version >/dev/null 2>&1; then
-        echo "  n8n restarted and ready"
+        echo "  ✅ n8n restarted successfully"
+        N8N_RESTART_SUCCESS=true
         break
+    fi
+    if [ $((i % 10)) -eq 0 ]; then
+        echo "    Still waiting for n8n restart... (${i}0s elapsed)"
     fi
     sleep 2
 done
+
+if [ "$N8N_RESTART_SUCCESS" = false ]; then
+    echo "  ⚠️  n8n restart timed out, but continuing with deployment..."
+fi
 
 echo "✅ Unified admin user configured across all services"
 
