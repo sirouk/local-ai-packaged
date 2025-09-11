@@ -1,19 +1,93 @@
 #!/bin/bash
 # Unified AI System Deployment Script
-# Supports three deployment modes:
+# 
+# USAGE:
+#   Remote execution (run from anywhere):
+#     bash <(curl -sSf -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' https://raw.githubusercontent.com/sirouk/local-ai-packaged/refs/heads/make-static/easy_deploy.sh)
+#
+#   Local execution (from cloned repository):
+#     ./easy_deploy.sh
+#
+# DEPLOYMENT MODES:
 # 1. InsightsLM Legacy - Original notebook/content generation system
 # 2. SOTA RAG 2.1 - Advanced hybrid search, GraphRAG, multimodal capabilities  
 # 3. Both Systems - Dual independent deployment (default)
 #
 # Features:
+# - Remote execution with automatic repository setup
 # - Automatic repository management (clone/update as needed)
 # - Smart validation based on deployment selection
 # - Independent database schemas and workflows
 # - Upgrade paths between deployment modes
+# - Idempotent operation (safe to run multiple times)
 
 set -e
 
-cd "$(dirname "$0")"
+# =============================================================================
+# EXECUTION METHOD DETECTION AND REPOSITORY SETUP
+# =============================================================================
+
+# Detect if script is being run via curl | bash vs locally
+SCRIPT_NAME="$(basename "$0" 2>/dev/null || echo "unknown")"
+REMOTE_EXECUTION=false
+
+# Check if running via curl | bash (script name will be like "bash", "/dev/fd/63", etc.)
+if [[ "$SCRIPT_NAME" == "bash" ]] || [[ "$0" =~ ^/dev/fd/ ]] || [[ "$0" =~ ^/proc/self/fd/ ]] || [[ ! -f "$0" ]]; then
+    REMOTE_EXECUTION=true
+    echo "🌐 Remote execution detected (curl | bash)"
+else
+    echo "📁 Local execution detected"
+    REMOTE_EXECUTION=false
+fi
+
+# Repository configuration
+REPO_URL="https://github.com/sirouk/local-ai-packaged.git"
+REPO_BRANCH="make-static"
+TARGET_DIR="local-ai-packaged"
+
+# Handle repository setup based on execution method
+if [ "$REMOTE_EXECUTION" = true ]; then
+    echo "🔄 Setting up repository for remote execution..."
+    
+    # Check if we're already in the target directory
+    if [ -f "docker-compose.yml" ] && [ -f "easy_setup_v2.sh" ]; then
+        echo "✅ Already in local-ai-packaged directory"
+    elif [ -d "$TARGET_DIR" ]; then
+        echo "📁 Found existing $TARGET_DIR directory, entering it..."
+        cd "$TARGET_DIR"
+        
+        # Verify it's the right repo and update it
+        if [ -d ".git" ]; then
+            echo "🔄 Updating existing repository..."
+            git fetch origin "$REPO_BRANCH" >/dev/null 2>&1 || true
+            git reset --hard "origin/$REPO_BRANCH" >/dev/null 2>&1 || true
+            echo "✅ Repository updated to latest $REPO_BRANCH"
+        else
+            echo "⚠️  Directory exists but isn't a git repo, using as-is"
+        fi
+    else
+        echo "📥 Cloning repository..."
+        if command -v git >/dev/null 2>&1; then
+            git clone -b "$REPO_BRANCH" "$REPO_URL" "$TARGET_DIR" || {
+                echo "❌ Failed to clone repository"
+                echo "Please manually run: git clone -b $REPO_BRANCH $REPO_URL $TARGET_DIR"
+                echo "Then cd into $TARGET_DIR and run this script locally"
+                exit 1
+            }
+            cd "$TARGET_DIR"
+            echo "✅ Repository cloned and entered"
+        else
+            echo "❌ Git not found. Please install git first:"
+            echo "  macOS: brew install git"
+            echo "  Ubuntu/Debian: sudo apt install git"
+            echo "  CentOS/RHEL: sudo yum install git"
+            exit 1
+        fi
+    fi
+else
+    # Local execution - use existing directory logic
+    cd "$(dirname "$0")"
+fi
 
 # Default model configuration (following easy_setup_v2.sh pattern)
 DEFAULT_LOCAL_MODEL="qwen3:8b-q4_K_M"
@@ -29,6 +103,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== Unified AI System Deployment Script ===${NC}"
+echo -e "${BLUE}Execution Mode: $([ "$REMOTE_EXECUTION" = true ] && echo "Remote (curl | bash)" || echo "Local")${NC}"
 echo -e "${BLUE}Choose from: InsightsLM Legacy | SOTA RAG 2.1 | Both Systems${NC}"
 echo ""
 
@@ -53,12 +128,22 @@ cp_sed() {
     fi
 }
 
-# Verify we're in the correct directory
+# Verify we're in the correct directory (should always pass after setup above)
 if [ ! -f "docker-compose.yml" ] || [ ! -f "easy_setup_v2.sh" ]; then
-    echo -e "${RED}Error: This script must be run from the local-ai-packaged directory${NC}"
-    echo "Make sure you're in the directory containing docker-compose.yml"
+    echo -e "${RED}Error: Required files not found in current directory${NC}"
+    echo "Expected files: docker-compose.yml, easy_setup_v2.sh"
+    echo "Current directory: $(pwd)"
+    echo "Directory contents:"
+    ls -la || true
+    if [ "$REMOTE_EXECUTION" = true ]; then
+        echo -e "${RED}Repository setup failed. Please try running the script again.${NC}"
+    else
+        echo -e "${RED}Please ensure you're running this script from the local-ai-packaged directory${NC}"
+    fi
     exit 1
 fi
+
+echo -e "${GREEN}✓ Verified: Running in local-ai-packaged directory$([ "$REMOTE_EXECUTION" = true ] && echo " (auto-setup)" || echo " (local)")${NC}"
 
 # Verify SOTA RAG files are present
 if [ ! -f "sota-rag-upgrade/src/TheAIAutomators.com - RAG SOTA - v2.1 BLUEPRINT (1).json" ]; then
@@ -2823,6 +2908,10 @@ fi
 echo ""
 echo -e "${BLUE}💡 Note: This script is idempotent - you can run it multiple times safely.${NC}"
 echo -e "${BLUE}   Future runs will preserve existing data and only update components as needed.${NC}"
+echo ""
+echo -e "${BLUE}🌐 Remote Execution: You can run this script from anywhere using:${NC}"
+echo -e "${BLUE}   bash <(curl -sSf -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \\${NC}"
+echo -e "${BLUE}     https://raw.githubusercontent.com/sirouk/local-ai-packaged/refs/heads/make-static/easy_deploy.sh)${NC}"
 echo ""
 echo -e "${BLUE}🔧 Credential Mapping: All SOTA RAG workflows use correct credential IDs${NC}"
 echo -e "${BLUE}   Following easy_setup_v2.sh pattern: import credentials → update workflows → re-import${NC}"
