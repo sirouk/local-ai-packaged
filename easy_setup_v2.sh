@@ -681,6 +681,40 @@ if [ "$IS_MACOS" = true ]; then
         # Define services and ports using simple arrays (compatible with bash 3.x on macOS)
         PORT_CONFLICTS=false
         
+        # Track assigned ports to avoid collisions during reassignment
+        ASSIGNED_PORTS=""
+        
+        # Helper function to check if a port is already assigned in this session
+        is_port_assigned() {
+            local port=$1
+            case " $ASSIGNED_PORTS " in
+                *" $port "*)
+                    return 0  # Port is assigned
+                    ;;
+                *)
+                    return 1  # Port is not assigned
+                    ;;
+            esac
+        }
+        
+        # Enhanced find_available_port that also checks assigned ports
+        find_available_port_safe() {
+            local start_port=$1
+            local port=$start_port
+            
+            while [ $port -le 65535 ]; do
+                if check_port_available $port && ! is_port_assigned $port; then
+                    echo $port
+                    return 0
+                fi
+                port=$((port + 1))
+            done
+            
+            # If we can't find a port, return the original
+            echo $start_port
+            return 1
+        }
+        
         # Check each service and port individually (bash 3.x compatible)
         check_and_update_port() {
             local service=$1
@@ -690,9 +724,13 @@ if [ "$IS_MACOS" = true ]; then
             
             echo "  Checking port $default_port for service $service..."
             
-            if ! check_port_available $default_port; then
-                echo "    ⚠️  Port $default_port is already in use"
-                new_port=$(find_available_port $((default_port + 1)))
+            if ! check_port_available $default_port || is_port_assigned $default_port; then
+                if ! check_port_available $default_port; then
+                    echo "    ⚠️  Port $default_port is already in use by another process"
+                else
+                    echo "    ⚠️  Port $default_port was already assigned to another service"
+                fi
+                new_port=$(find_available_port_safe $((default_port + 1)))
                 
                 if [ $new_port -ne $default_port ]; then
                     echo "    → Reassigning $service from port $default_port to $new_port"
@@ -700,12 +738,17 @@ if [ "$IS_MACOS" = true ]; then
                     # Update the port in the override file
                     yq eval ".services.$service.ports[$port_index] = \"127.0.0.1:${new_port}:${container_port}\"" -i "$OVERRIDE_FILE"
                     
+                    # Track this port as assigned
+                    ASSIGNED_PORTS="$ASSIGNED_PORTS $new_port "
+                    
                     PORT_CONFLICTS=true
                 else
                     echo "    ❌ Could not find alternative port for $service"
                 fi
             else
                 echo "    ✅ Port $default_port is available for $service"
+                # Track this port as assigned even if it's the default
+                ASSIGNED_PORTS="$ASSIGNED_PORTS $default_port "
             fi
         }
         
