@@ -1051,6 +1051,160 @@ fi
 echo ""
 echo -e "${YELLOW}=== Starting Services with Fresh Volumes ===${NC}"
 
+# Function to check if a port is available on macOS
+check_port_available() {
+    local port=$1
+    if [ "$IS_MACOS" = true ]; then
+        # Use lsof to check if port is in use (more reliable on macOS)
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            return 1  # Port is in use
+        else
+            return 0  # Port is available
+        fi
+    else
+        # For Linux, use netstat
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            return 1  # Port is in use
+        else
+            return 0  # Port is available
+        fi
+    fi
+}
+
+# Function to find next available port starting from given port
+find_available_port() {
+    local start_port=$1
+    local port=$start_port
+    
+    while [ $port -le 65535 ]; do
+        if check_port_available $port; then
+            echo $port
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    
+    # If we can't find a port, return the original
+    echo $start_port
+    return 1
+}
+
+# Handle port conflicts on macOS before starting services
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}Checking for port conflicts on macOS...${NC}"
+    
+    # Define default ports from docker-compose.override.private.yml
+    OVERRIDE_FILE="docker-compose.override.private.yml"
+    
+    # Check if override file exists
+    if [ -f "$OVERRIDE_FILE" ]; then
+        # Array of services and their default ports to check
+        declare -A SERVICE_PORTS=(
+            ["flowise"]="3001"
+            ["open-webui"]="8080" 
+            ["qdrant"]="6333"
+            ["neo4j"]="7474"
+            ["langfuse-worker"]="3030"
+            ["langfuse-web"]="3000"
+            ["clickhouse"]="8123"
+            ["minio"]="9010"
+            ["postgres"]="5433"
+            ["redis"]="6379"
+            ["searxng"]="8081"
+        )
+        
+        PORT_CONFLICTS=false
+        
+        for service in "${!SERVICE_PORTS[@]}"; do
+            port=${SERVICE_PORTS[$service]}
+            echo "  Checking port $port for service $service..."
+            
+            if ! check_port_available $port; then
+                echo "    ⚠️  Port $port is already in use"
+                new_port=$(find_available_port $((port + 1)))
+                
+                if [ $new_port -ne $port ]; then
+                    echo "    → Reassigning $service from port $port to $new_port"
+                    
+                    # Update the port in the override file based on service
+                    case "$service" in
+                        "flowise")
+                            yq eval ".services.flowise.ports[0] = \"127.0.0.1:${new_port}:3001\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "open-webui")
+                            yq eval ".services.open-webui.ports[0] = \"127.0.0.1:${new_port}:8080\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "qdrant")
+                            yq eval ".services.qdrant.ports[0] = \"127.0.0.1:${new_port}:6333\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "neo4j")
+                            yq eval ".services.neo4j.ports[1] = \"127.0.0.1:${new_port}:7474\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "langfuse-worker")
+                            yq eval ".services.langfuse-worker.ports[0] = \"127.0.0.1:${new_port}:3030\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "langfuse-web")
+                            yq eval ".services.langfuse-web.ports[0] = \"127.0.0.1:${new_port}:3000\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "clickhouse")
+                            yq eval ".services.clickhouse.ports[0] = \"127.0.0.1:${new_port}:8123\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "minio")
+                            yq eval ".services.minio.ports[0] = \"127.0.0.1:${new_port}:9000\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "postgres")
+                            yq eval ".services.postgres.ports[0] = \"127.0.0.1:${new_port}:5432\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "redis")
+                            yq eval ".services.redis.ports[0] = \"127.0.0.1:${new_port}:6379\"" -i "$OVERRIDE_FILE"
+                            ;;
+                        "searxng")
+                            yq eval ".services.searxng.ports[0] = \"127.0.0.1:${new_port}:8080\"" -i "$OVERRIDE_FILE"
+                            ;;
+                    esac
+                    
+                    PORT_CONFLICTS=true
+                    
+                    # Store the new port for later use in URLs
+                    case "$service" in
+                        "searxng")
+                            SEARXNG_PORT=$new_port
+                            ;;
+                        "flowise")
+                            FLOWISE_PORT=$new_port
+                            ;;
+                        "open-webui")
+                            WEBUI_PORT=$new_port
+                            ;;
+                        "langfuse-web")
+                            LANGFUSE_PORT=$new_port
+                            ;;
+                    esac
+                else
+                    echo "    ❌ Could not find alternative port for $service"
+                fi
+            else
+                echo "    ✅ Port $port is available for $service"
+            fi
+        done
+        
+        if [ "$PORT_CONFLICTS" = true ]; then
+            echo -e "${GREEN}✅ Port conflicts resolved for macOS compatibility${NC}"
+            echo "    Updated ports will be displayed in the final service URLs"
+        else
+            echo -e "${GREEN}✅ No port conflicts detected${NC}"
+        fi
+    else
+        echo "  ⚠️  Override file not found, skipping port conflict check"
+    fi
+fi
+
+# Set default ports if not already set by conflict resolution
+SEARXNG_PORT=${SEARXNG_PORT:-8081}
+FLOWISE_PORT=${FLOWISE_PORT:-3001}
+WEBUI_PORT=${WEBUI_PORT:-8080}
+LANGFUSE_PORT=${LANGFUSE_PORT:-3000}
+
 # Skip full restart if SOTA RAG is already complete - unless FORCE_RESET
 if [ "$SOTA_COMPLETE" = true ] && [ "$FORCE_RESET" = false ]; then
     echo -e "${GREEN}✓ Services already running - performing idempotent updates only${NC}"
@@ -1880,8 +2034,10 @@ Service URLs:
 - InsightsLM UI: http://${ACCESS_HOST}:3010")
 
 Additional Services:
-- Open WebUI: http://${ACCESS_HOST}:8080  
-- Flowise: http://${ACCESS_HOST}:3001
+- Open WebUI: http://${ACCESS_HOST}:${WEBUI_PORT}  
+- Flowise: http://${ACCESS_HOST}:${FLOWISE_PORT}
+- Langfuse: http://${ACCESS_HOST}:${LANGFUSE_PORT}
+- SearXNG: http://${ACCESS_HOST}:${SEARXNG_PORT}
 EOF
 
 
