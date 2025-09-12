@@ -160,11 +160,41 @@ if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker not found - installing...${NC}"
     read -p "Install Docker? (y/N): " -r INSTALL_DOCKER
     if [[ "$INSTALL_DOCKER" =~ ^[Yy]$ ]]; then
-        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-        sudo chmod +x /tmp/get-docker.sh
-        sudo /tmp/get-docker.sh
-        sudo rm /tmp/get-docker.sh
-        echo -e "${GREEN}✓ Docker installed${NC}"
+
+        # if root user install docker normally, otherwise use rootless
+        if [ "$EUID" -eq 0 ]; then
+            echo "Installing Docker as root..."
+            curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+            chmod +x /tmp/get-docker.sh
+            /tmp/get-docker.sh
+        else
+            echo "Installing Docker in rootless mode..."
+            curl -fsSL https://get.docker.com/rootless -o /tmp/get-docker.sh
+            chmod +x /tmp/get-docker.sh
+            /tmp/get-docker.sh
+        fi
+        rm /tmp/get-docker.sh
+        echo -e "${GREEN}✓ Docker installation completed${NC}"
+
+        # Verify Docker is now available in PATH
+        echo "Verifying Docker installation..."
+        
+        # For rootless installation, we may need to source the shell profile
+        if [ "$EUID" -ne 0 ]; then
+            # Check if Docker binaries were installed to user's bin directory
+            if [ -d "$HOME/.local/bin" ] && [ -f "$HOME/.local/bin/docker" ]; then
+                echo "Adding $HOME/.local/bin to PATH for this session..."
+                export PATH="$HOME/.local/bin:$PATH"
+            fi
+            
+            # Source common shell profiles that might have been updated
+            for profile in ~/.bashrc ~/.bash_profile ~/.profile; do
+                if [ -f "$profile" ]; then
+                    echo "Sourcing $profile..."
+                    source "$profile" 2>/dev/null || true
+                fi
+            done
+        fi
     else
         echo -e "${RED}Setup cancelled. Please install Docker and try again.${NC}"
         exit 1
