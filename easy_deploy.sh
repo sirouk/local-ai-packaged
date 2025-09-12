@@ -165,6 +165,7 @@ echo -e "${YELLOW}=== Docker Installation Check ===${NC}"
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     DOCKER_VERSION=$(docker --version | cut -d' ' -f3 | cut -d',' -f1)
     echo -e "${GREEN}✓ Docker is installed and running (version: $DOCKER_VERSION)${NC}"
+    DOCKER_SUDO=""  # Docker works without sudo
 elif command -v docker >/dev/null 2>&1; then
     echo -e "${YELLOW}Docker is installed but not running${NC}"
     echo "Please start Docker and try again:"
@@ -198,28 +199,80 @@ else
                 sudo systemctl start docker || true
                 sudo systemctl enable docker || true
                 
-                # Test Docker without sudo
-                if ! docker info >/dev/null 2>&1; then
-                    echo -e "${YELLOW}⚠️  Docker requires sudo. You may need to restart your session or run:${NC}"
-                    echo "   newgrep docker"
-                    echo "   OR reboot your system"
-                    echo ""
-                    echo "For now, testing with sudo..."
+                # Wait for Docker daemon to start up (give it some time)
+                echo "Waiting for Docker daemon to start..."
+                for i in {1..30}; do
                     if sudo docker info >/dev/null 2>&1; then
-                        echo -e "${GREEN}✓ Docker is working with sudo${NC}"
-                        echo -e "${YELLOW}Note: You'll need to run this script with sudo or restart your session${NC}"
-                        
-                        read -p "Continue with sudo Docker access? (Y/n): " -r CONTINUE_SUDO
-                        CONTINUE_SUDO=${CONTINUE_SUDO:-Y}
-                        if [[ ! "$CONTINUE_SUDO" =~ ^[Yy]$ ]]; then
-                            echo "Please restart your session to apply docker group changes and run the script again"
-                            exit 0
-                        fi
-                    else
-                        echo -e "${RED}❌ Docker installation may have failed${NC}"
+                        echo -e "${GREEN}✓ Docker daemon is running${NC}"
+                        break
+                    fi
+                    sleep 2
+                    if [ $i -eq 30 ]; then
+                        echo -e "${RED}❌ Docker daemon failed to start after 60 seconds${NC}"
+                        echo "Please check Docker installation and try running: sudo systemctl status docker"
                         exit 1
                     fi
+                done
+                
+                # Test Docker without sudo first
+                if docker info >/dev/null 2>&1; then
+                    echo -e "${GREEN}✓ Docker is working without sudo${NC}"
+                    DOCKER_SUDO=""
+                elif sudo docker info >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⚠️  Docker requires sudo access${NC}"
+                    echo ""
+                    echo "Options to fix Docker permissions:"
+                    echo "1. Run 'newgrp docker' in this shell (temporary fix)"
+                    echo "2. Log out and back in (permanent fix)"
+                    echo "3. Reboot your system (permanent fix)"
+                    echo "4. Continue with sudo (not recommended for production)"
+                    echo ""
+                    
+                    read -p "Try 'newgrp docker' to fix permissions now? (Y/n): " -r TRY_NEWGRP
+                    TRY_NEWGRP=${TRY_NEWGRP:-Y}
+                    
+                    if [[ "$TRY_NEWGRP" =~ ^[Yy]$ ]]; then
+                        echo "Attempting to activate docker group for current session..."
+                        echo -e "${YELLOW}Note: You may need to re-run this script with 'newgrp docker' prepended${NC}"
+                        echo -e "${YELLOW}Command: newgrp docker -c '$0'${NC}"
+                        echo ""
+                        
+                        # Test if we can access docker group
+                        if groups | grep -q docker; then
+                            echo -e "${GREEN}✓ User is in docker group, but permissions not active in current session${NC}"
+                        fi
+                        
+                        echo "Please run the following command to restart this script with proper Docker permissions:"
+                        echo ""
+                        if [ $# -eq 0 ]; then
+                            echo -e "${GREEN}newgrp docker -c 'bash \"$0\"'${NC}"
+                        else
+                            echo -e "${GREEN}newgrp docker -c 'bash \"$0\" $*'${NC}"
+                        fi
+                        echo ""
+                        echo "Or continue with sudo access (not recommended)..."
+                        read -p "Continue with sudo Docker access? (y/N): " -r CONTINUE_SUDO
+                        CONTINUE_SUDO=${CONTINUE_SUDO:-N}
+                        if [[ ! "$CONTINUE_SUDO" =~ ^[Yy]$ ]]; then
+                            echo "Please restart this script using the newgrp command shown above"
+                            exit 0
+                        fi
+                    fi
+                    
+                    echo -e "${YELLOW}Continuing with sudo Docker access...${NC}"
+                    echo -e "${YELLOW}Note: This may cause permission issues with Docker volumes${NC}"
+                    DOCKER_SUDO="sudo"
+                else
+                    echo -e "${RED}❌ Docker is not responding even with sudo${NC}"
+                    echo "Docker installation may have failed. Please check:"
+                    echo "  sudo systemctl status docker"
+                    echo "  sudo journalctl -u docker"
+                    exit 1
                 fi
+            else
+                # macOS - Docker should work without sudo
+                echo -e "${GREEN}✓ Docker installed successfully on macOS${NC}"
+                DOCKER_SUDO=""
             fi
         else
             echo -e "${RED}❌ Failed to install Docker${NC}"
@@ -251,6 +304,17 @@ else
 fi
 
 echo -e "${GREEN}✓ Docker and Docker Compose verified - ready for deployment${NC}"
+
+# Final Docker permission check and summary
+echo ""
+echo -e "${BLUE}Docker Permission Status:${NC}"
+if [ "${DOCKER_SUDO:-}" = "sudo" ]; then
+    echo -e "${YELLOW}⚠️  Using Docker with sudo access${NC}"
+    echo -e "${YELLOW}   This may cause issues with file permissions in volumes${NC}"
+    echo -e "${YELLOW}   Consider fixing Docker permissions after deployment${NC}"
+else
+    echo -e "${GREEN}✓ Using Docker without sudo (recommended)${NC}"
+fi
 
 # =============================================================================
 # RESET OPTION
