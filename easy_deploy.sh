@@ -9,7 +9,7 @@
 #     ./easy_deploy.sh
 #
 # DEPLOYMENT MODES:
-# 1. InsightsLM Legacy - Original notebook/content generation system
+# 1. InsightsLM - Original notebook/content generation system
 # 2. SOTA RAG 2.1 - Advanced hybrid search, GraphRAG, multimodal capabilities  
 # 3. Both Systems - Dual independent deployment (default)
 #
@@ -104,7 +104,7 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== Unified AI System Deployment Script ===${NC}"
 echo -e "${BLUE}Execution Mode: $([ "$REMOTE_EXECUTION" = true ] && echo "Remote (curl | bash)" || echo "Local")${NC}"
-echo -e "${BLUE}Choose from: InsightsLM Legacy | SOTA RAG 2.1 | Both Systems${NC}"
+echo -e "${BLUE}Choose from: InsightsLM | SOTA RAG 2.1 | Both Systems${NC}"
 echo ""
 
 # Detect operating system first
@@ -351,12 +351,12 @@ echo ""
 
 # 1. Deployment Mode Selection
 echo -e "${YELLOW}System Deployment Options:${NC}"
-echo "1. InsightsLM Legacy - Original notebook/content generation system only"
+echo "1. InsightsLM - Original notebook/content generation system only"
 echo "2. SOTA RAG 2.1 - Advanced hybrid search, GraphRAG, multimodal capabilities only"
 echo "3. Both Systems - InsightsLM + SOTA RAG dual deployment (independent operation)"
 echo ""
-read -p "Select deployment mode (press Enter for Both Systems): " -r DEPLOYMENT_MODE
-DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-3}
+read -p "Select deployment mode (press Enter for InsightsLM System): " -r DEPLOYMENT_MODE
+DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-1}
 
 if [[ "$DEPLOYMENT_MODE" != "1" && "$DEPLOYMENT_MODE" != "2" && "$DEPLOYMENT_MODE" != "3" ]]; then
     echo -e "${RED}Invalid selection. Please choose 1, 2, or 3.${NC}"
@@ -364,7 +364,7 @@ if [[ "$DEPLOYMENT_MODE" != "1" && "$DEPLOYMENT_MODE" != "2" && "$DEPLOYMENT_MOD
 fi
 
 if [ "$DEPLOYMENT_MODE" = "1" ]; then
-    echo -e "${GREEN}✓ InsightsLM Legacy selected - Original system only${NC}"
+    echo -e "${GREEN}✓ InsightsLM selected - Original system only${NC}"
     DEPLOY_INSIGHTSLM=true
     DEPLOY_SOTA_RAG=false
     USE_EXTERNAL_APIS=false
@@ -549,7 +549,7 @@ echo -e "${GREEN}✓ All deployment requirements validated${NC}"
 echo ""
 echo -e "${BLUE}=== Deployment Summary ===${NC}"
 if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
-    echo -e "${GREEN}📝 Systems to Deploy: InsightsLM Legacy + SOTA RAG 2.1${NC}"
+    echo -e "${GREEN}📝 Systems to Deploy: InsightsLM + SOTA RAG 2.1${NC}"
     echo -e "   → InsightsLM: Original notebook/content generation (768-dim vectors)"
     echo -e "   → SOTA RAG: Advanced hybrid search, GraphRAG, multimodal (1536-dim vectors)"
     echo -e "   → Integration: Independent operation with future bridge workflows planned"
@@ -650,8 +650,8 @@ echo -e "${YELLOW}Model Configuration:${NC}"
 
 # Configure models based on deployment mode and API selection
 if [ "$DEPLOYMENT_MODE" = "1" ]; then
-    # InsightsLM Legacy - always uses local models
-    echo -e "InsightsLM Legacy mode - configuring local Ollama models"
+    # InsightsLM - always uses local models
+    echo -e "InsightsLM mode - configuring local Ollama models"
     read -p "Enter main model (press Enter for default: $DEFAULT_LOCAL_MODEL): " -r MAIN_MODEL
     MAIN_MODEL=${MAIN_MODEL:-$DEFAULT_LOCAL_MODEL}
     read -p "Enter embedding model (press Enter for default: $DEFAULT_EMBEDDING_MODEL): " -r EMBEDDING_MODEL
@@ -717,7 +717,7 @@ else
     ENABLE_CONTEXTUAL=N
     ENABLE_LONGTERM_MEMORY=N
     echo ""
-    echo -e "${BLUE}InsightsLM Legacy mode - SOTA RAG features disabled${NC}"
+    echo -e "${BLUE}InsightsLM mode - SOTA RAG features disabled${NC}"
 fi
 
 # 4. Network Configuration
@@ -2150,7 +2150,7 @@ cat > DEPLOYMENT_SUMMARY.txt << EOF
 System Deployment Summary
 =========================
 
-Deployment Mode: $([ "$DEPLOYMENT_MODE" = "1" ] && echo "InsightsLM Legacy Only" || ([ "$DEPLOYMENT_MODE" = "2" ] && echo "SOTA RAG 2.1 Only" || echo "Both Systems (Dual Deployment)"))
+Deployment Mode: $([ "$DEPLOYMENT_MODE" = "1" ] && echo "InsightsLM Only" || ([ "$DEPLOYMENT_MODE" = "2" ] && echo "SOTA RAG 2.1 Only" || echo "Both Systems (Dual Deployment)"))
 API Mode: $([ "$USE_EXTERNAL_APIS" = true ] && [ "$USE_LOCAL_APIS" = true ] && echo "Hybrid (Both Local and External)" || ([ "$USE_EXTERNAL_APIS" = true ] && echo "External APIs Only" || echo "Local-Only"))
 Systems Deployed: $([ "$DEPLOY_INSIGHTSLM" = true ] && echo -n "InsightsLM ") $([ "$DEPLOY_SOTA_RAG" = true ] && echo -n "SOTA-RAG")
 
@@ -3019,7 +3019,7 @@ echo -e "${GREEN}============================================================${N
 if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
     echo -e "${GREEN}🎉 === DUAL SYSTEM DEPLOYMENT COMPLETE === 🎉${NC}"  
 elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
-    echo -e "${GREEN}🎉 === INSIGHTSLM LEGACY DEPLOYMENT COMPLETE === 🎉${NC}"
+    echo -e "${GREEN}🎉 === INSIGHTSLM DEPLOYMENT COMPLETE === 🎉${NC}"
 else
     echo -e "${GREEN}🎉 === SOTA RAG 2.1 DEPLOYMENT COMPLETE === 🎉${NC}"
 fi
@@ -3113,7 +3113,7 @@ if [ "$DEPLOY_INSIGHTSLM" = true ] && [ "$DEPLOY_SOTA_RAG" = true ]; then
     echo -e "${BLUE}🧠 SOTA RAG: Advanced hybrid search, contextual embeddings, GraphRAG (independent operation)${NC}"
     echo -e "${BLUE}🔧 Integration: See SOTA_PLANS.md for future InsightsLM → SOTA RAG backend integration${NC}"
 elif [ "$DEPLOY_INSIGHTSLM" = true ]; then
-    echo -e "${BLUE}🚀 InsightsLM Legacy deployment ready! Complete notebook and content generation system:${NC}"
+    echo -e "${BLUE}🚀 InsightsLM deployment ready! Complete notebook and content generation system:${NC}"
     echo ""
     echo -e "${BLUE}📓 InsightsLM: Original functionality with local Ollama models${NC}"
     echo -e "${BLUE}🔧 Upgrade Path: Run again and select 'Both Systems' to add SOTA RAG capabilities${NC}"
