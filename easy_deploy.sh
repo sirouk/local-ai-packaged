@@ -513,7 +513,60 @@ if [ "$IS_MACOS" = true ]; then
     fi
 fi
 
+# Configure Supabase Edge Functions environment variables BEFORE starting services
+echo -e "${YELLOW}Configuring Supabase Edge Functions environment variables...${NC}"
+
+STORAGE_COMPOSE="supabase/docker/docker-compose.yml"
+
+# Check if functions service exists in supabase docker-compose
+if ! yq eval '.services | has("functions")' "$STORAGE_COMPOSE" | grep -q "true"; then
+    echo "    Creating functions service in supabase docker-compose..."
+    yq eval '.services.functions = {}' -i "$STORAGE_COMPOSE"
+fi
+
+# Check if environment exists in functions service
+if ! yq eval '.services.functions | has("environment")' "$STORAGE_COMPOSE" | grep -q "true"; then
+    echo "    Creating environment section for functions service..."
+    yq eval '.services.functions.environment = {}' -i "$STORAGE_COMPOSE"
+fi
+
+# Add environment variables from .env (InsightsLM webhook URLs and auth)
+echo "    Adding webhook environment variables..."
+
+# Define the environment variables we need to add
+ENV_VARS=(
+    "NOTEBOOK_CHAT_URL"
+    "NOTEBOOK_GENERATION_URL" 
+    "AUDIO_GENERATION_WEBHOOK_URL"
+    "DOCUMENT_PROCESSING_WEBHOOK_URL"
+    "ADDITIONAL_SOURCES_WEBHOOK_URL"
+    "NOTEBOOK_GENERATION_AUTH"
+)
+
+for env_var in "${ENV_VARS[@]}"; do
+    # Check if the environment variable already exists
+    if ! yq eval ".services.functions.environment | has(\"$env_var\")" "$STORAGE_COMPOSE" | grep -q "true"; then
+        # Add the environment variable with shell variable syntax
+        yq eval ".services.functions.environment.\"$env_var\" = \"\${$env_var}\"" -i "$STORAGE_COMPOSE"
+        echo "    Added environment variable: $env_var"
+    else
+        echo "    Environment variable $env_var already exists, skipping"
+    fi
+done
+
+echo "✅ Supabase Edge Functions configured with webhook environment variables"
+
 echo -e "${GREEN}✓ Required repositories verified and up to date${NC}"
+
+# Ensure .env is copied to supabase/docker after repository setup
+echo -e "${YELLOW}Finalizing Supabase configuration...${NC}"
+if [ -d "supabase/docker" ]; then
+    cp .env supabase/docker/.env
+    echo "  ✅ Environment variables synchronized to supabase/docker/.env"
+else
+    echo -e "${RED}Error: supabase/docker directory still not found after repository setup${NC}"
+    exit 1
+fi
 
 # Validate required files exist for selected deployment mode
 echo ""
@@ -902,6 +955,15 @@ fi
 
 echo -e "${GREEN}✓ Environment configuration created${NC}"
 
+# Copy .env to supabase/docker for edge functions access
+echo -e "${YELLOW}Configuring Supabase with environment variables...${NC}"
+if [ -d "supabase/docker" ]; then
+    cp .env supabase/docker/.env
+    echo "  ✅ Environment variables copied to supabase/docker/.env"
+else
+    echo "  ⚠️  supabase/docker directory not found - will be configured after repository setup"
+fi
+
 # Force rebuild InsightsLM with fresh credentials (following easy_setup_v2.sh pattern)
 if [ "$DEPLOY_INSIGHTSLM" = true ]; then
     echo -e "${YELLOW}Pre-building InsightsLM with fresh credentials...${NC}"
@@ -1251,6 +1313,13 @@ else
     # Fix any unquoted values in .env that cause parsing issues
     cp_sed 's/STUDIO_DEFAULT_ORGANIZATION=Default Organization/STUDIO_DEFAULT_ORGANIZATION="Default Organization"/' .env
     cp_sed 's/STUDIO_DEFAULT_PROJECT=Default Project/STUDIO_DEFAULT_PROJECT="Default Project"/' .env
+
+    # Ensure .env is copied to supabase/docker before starting services
+    echo "  → Synchronizing environment variables to Supabase..."
+    if [ -d "supabase/docker" ]; then
+        cp .env supabase/docker/.env
+        echo "    ✓ Environment variables copied to supabase/docker/.env for edge functions"
+    fi
 
     # Start services with fresh volumes  
     echo "Starting all services with profile: $PROFILE..."
@@ -1817,6 +1886,12 @@ if [ "$DEPLOY_INSIGHTSLM" = true ]; then
     mkdir -p ./supabase/docker/volumes/functions/
     cp -rf ./insights-lm-local-package/supabase-functions/* ./supabase/docker/volumes/functions/
     echo "    ✓ InsightsLM edge functions deployed"
+    
+    # Restart edge functions to load new environment variables and functions
+    echo "  → Restarting edge functions to load InsightsLM configuration..."
+    docker restart supabase-edge-functions >/dev/null 2>&1 || true
+    sleep 5
+    echo "    ✓ Edge functions restarted with InsightsLM webhook configuration"
 fi
 
 # Deploy SOTA RAG specific edge functions if deploying SOTA RAG
@@ -2847,7 +2922,25 @@ TEST_RESPONSE=$(curl -s -X POST http://localhost:8000/functions/v1/generate-note
 if echo "$TEST_RESPONSE" | grep -q '"success":true'; then
     echo "    ✅ generate-notebook-content webhook working correctly"
 else
-    echo "    ⚠️ generate-notebook-content may need attention (this is often normal if no sources exist)"
+    echo "    ⚠️ generate-notebook-content webhook test failed - checking configuration..."
+    
+    # Check if environment variables are accessible to edge functions
+    echo "    → Verifying edge function environment variables..."
+    if docker exec supabase-edge-functions env | grep -q "NOTEBOOK_GENERATION_URL"; then
+        echo "      ✓ NOTEBOOK_GENERATION_URL found in edge functions container"
+    else
+        echo "      ✗ NOTEBOOK_GENERATION_URL missing from edge functions container"
+        echo "        Try restarting edge functions: docker restart supabase-edge-functions"
+    fi
+    
+    if docker exec supabase-edge-functions env | grep -q "NOTEBOOK_GENERATION_AUTH"; then
+        echo "      ✓ NOTEBOOK_GENERATION_AUTH found in edge functions container"
+    else
+        echo "      ✗ NOTEBOOK_GENERATION_AUTH missing from edge functions container"
+    fi
+    
+    echo "    → Error response from edge function:"
+    echo "      $TEST_RESPONSE"
 fi
 
 echo "  ✅ Webhook verification completed"
