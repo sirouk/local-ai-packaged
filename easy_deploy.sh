@@ -155,6 +155,104 @@ fi
 echo -e "${GREEN}✓ Static files verified - proceeding with deployment...${NC}"
 
 # =============================================================================
+# DOCKER INSTALLATION CHECK AND AUTO-INSTALL
+# =============================================================================
+
+echo ""
+echo -e "${YELLOW}=== Docker Installation Check ===${NC}"
+
+# Check if Docker is installed and working
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    DOCKER_VERSION=$(docker --version | cut -d' ' -f3 | cut -d',' -f1)
+    echo -e "${GREEN}✓ Docker is installed and running (version: $DOCKER_VERSION)${NC}"
+elif command -v docker >/dev/null 2>&1; then
+    echo -e "${YELLOW}Docker is installed but not running${NC}"
+    echo "Please start Docker and try again:"
+    if [ "$IS_MACOS" = true ]; then
+        echo "  macOS: Open Docker Desktop application"
+    else
+        echo "  Linux: sudo systemctl start docker"
+        echo "         sudo systemctl enable docker"
+    fi
+    exit 1
+else
+    echo -e "${YELLOW}Docker not found - installing Docker automatically...${NC}"
+    echo ""
+    read -p "Install Docker using the official installation script? (Y/n): " -r INSTALL_DOCKER
+    INSTALL_DOCKER=${INSTALL_DOCKER:-Y}
+    
+    if [[ "$INSTALL_DOCKER" =~ ^[Yy]$ ]]; then
+        echo "Installing Docker using official script..."
+        if bash <(curl -fsSL https://get.docker.com); then
+            echo -e "${GREEN}✓ Docker installed successfully${NC}"
+            
+            # Add current user to docker group on Linux
+            if [ "$IS_MACOS" = false ]; then
+                echo "Adding current user to docker group..."
+                sudo usermod -aG docker "$USER" || true
+                echo -e "${YELLOW}⚠️  You may need to log out and back in for docker group changes to take effect${NC}"
+                echo -e "${YELLOW}   Or run: newgrp docker${NC}"
+                
+                # Start and enable Docker service on Linux
+                echo "Starting Docker service..."
+                sudo systemctl start docker || true
+                sudo systemctl enable docker || true
+                
+                # Test Docker without sudo
+                if ! docker info >/dev/null 2>&1; then
+                    echo -e "${YELLOW}⚠️  Docker requires sudo. You may need to restart your session or run:${NC}"
+                    echo "   newgrep docker"
+                    echo "   OR reboot your system"
+                    echo ""
+                    echo "For now, testing with sudo..."
+                    if sudo docker info >/dev/null 2>&1; then
+                        echo -e "${GREEN}✓ Docker is working with sudo${NC}"
+                        echo -e "${YELLOW}Note: You'll need to run this script with sudo or restart your session${NC}"
+                        
+                        read -p "Continue with sudo Docker access? (Y/n): " -r CONTINUE_SUDO
+                        CONTINUE_SUDO=${CONTINUE_SUDO:-Y}
+                        if [[ ! "$CONTINUE_SUDO" =~ ^[Yy]$ ]]; then
+                            echo "Please restart your session to apply docker group changes and run the script again"
+                            exit 0
+                        fi
+                    else
+                        echo -e "${RED}❌ Docker installation may have failed${NC}"
+                        exit 1
+                    fi
+                fi
+            fi
+        else
+            echo -e "${RED}❌ Failed to install Docker${NC}"
+            echo "Please install Docker manually:"
+            echo "  macOS: https://docs.docker.com/desktop/install/mac-install/"
+            echo "  Ubuntu/Debian: https://docs.docker.com/engine/install/ubuntu/"
+            echo "  CentOS/RHEL: https://docs.docker.com/engine/install/centos/"
+            exit 1
+        fi
+    else
+        echo -e "${RED}Docker is required for this deployment${NC}"
+        echo "Please install Docker and run this script again"
+        exit 1
+    fi
+fi
+
+# Verify Docker Compose is available (should be included with modern Docker)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | head -1 | cut -d' ' -f4)
+    echo -e "${GREEN}✓ Docker Compose is available (version: $COMPOSE_VERSION)${NC}"
+elif docker-compose --version >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Docker Compose (standalone) is available${NC}"
+    echo -e "${YELLOW}Note: This script uses 'docker compose' (plugin). Consider upgrading to Docker with built-in Compose${NC}"
+else
+    echo -e "${RED}❌ Docker Compose not found${NC}"
+    echo "Docker Compose is required. Please install it:"
+    echo "  https://docs.docker.com/compose/install/"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Docker and Docker Compose verified - ready for deployment${NC}"
+
+# =============================================================================
 # RESET OPTION
 # =============================================================================
 
