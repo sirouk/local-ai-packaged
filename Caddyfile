@@ -37,7 +37,12 @@
 
 # Neo4j
 {$NEO4J_HOSTNAME} {
-    reverse_proxy neo4j:7474
+	reverse_proxy neo4j:7474
+}
+
+# LightRAG
+{$LIGHTRAG_HOSTNAME:localhost:8009} {
+	reverse_proxy lightrag:8020
 }
 
 import /etc/caddy/addons/*.conf

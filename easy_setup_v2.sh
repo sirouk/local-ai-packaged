@@ -631,6 +631,151 @@ if [ "$IS_MACOS" = true ]; then
     fi
 fi
 
+# Function to check if a port is available on macOS
+check_port_available() {
+    local port=$1
+    if [ "$IS_MACOS" = true ]; then
+        # Use lsof to check if port is in use (more reliable on macOS)
+        if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+            return 1  # Port is in use
+        else
+            return 0  # Port is available
+        fi
+    else
+        # For Linux, use netstat
+        if netstat -tuln 2>/dev/null | grep -q ":$port "; then
+            return 1  # Port is in use
+        else
+            return 0  # Port is available
+        fi
+    fi
+}
+
+# Function to find next available port starting from given port
+find_available_port() {
+    local start_port=$1
+    local port=$start_port
+    
+    while [ $port -le 65535 ]; do
+        if check_port_available $port; then
+            echo $port
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    
+    # If we can't find a port, return the original
+    echo $start_port
+    return 1
+}
+
+# Handle port conflicts on macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}Checking for port conflicts on macOS...${NC}"
+    
+    # Define default ports from docker-compose.override.private.yml
+    OVERRIDE_FILE="docker-compose.override.private.yml"
+    
+    # Check if override file exists
+    if [ -f "$OVERRIDE_FILE" ]; then
+        # Define services and ports using simple arrays (compatible with bash 3.x on macOS)
+        PORT_CONFLICTS=false
+        
+        # Track assigned ports to avoid collisions during reassignment
+        ASSIGNED_PORTS=""
+        
+        # Helper function to check if a port is already assigned in this session
+        is_port_assigned() {
+            local port=$1
+            case " $ASSIGNED_PORTS " in
+                *" $port "*)
+                    return 0  # Port is assigned
+                    ;;
+                *)
+                    return 1  # Port is not assigned
+                    ;;
+            esac
+        }
+        
+        # Enhanced find_available_port that also checks assigned ports
+        find_available_port_safe() {
+            local start_port=$1
+            local port=$start_port
+            
+            while [ $port -le 65535 ]; do
+                if check_port_available $port && ! is_port_assigned $port; then
+                    echo $port
+                    return 0
+                fi
+                port=$((port + 1))
+            done
+            
+            # If we can't find a port, return the original
+            echo $start_port
+            return 1
+        }
+        
+        # Check each service and port individually (bash 3.x compatible)
+        check_and_update_port() {
+            local service=$1
+            local default_port=$2
+            local container_port=$3
+            local port_index=${4:-0}
+            
+            echo "  Checking port $default_port for service $service..."
+            
+            if ! check_port_available $default_port || is_port_assigned $default_port; then
+                if ! check_port_available $default_port; then
+                    echo "    ⚠️  Port $default_port is already in use by another process"
+                else
+                    echo "    ⚠️  Port $default_port was already assigned to another service"
+                fi
+                new_port=$(find_available_port_safe $((default_port + 1)))
+                
+                if [ $new_port -ne $default_port ]; then
+                    echo "    → Reassigning $service from port $default_port to $new_port"
+                    
+                    # Update the port in the override file
+                    yq eval ".services.$service.ports[$port_index] = \"127.0.0.1:${new_port}:${container_port}\"" -i "$OVERRIDE_FILE"
+                    
+                    # Track this port as assigned
+                    ASSIGNED_PORTS="$ASSIGNED_PORTS $new_port "
+                    
+                    PORT_CONFLICTS=true
+                else
+                    echo "    ❌ Could not find alternative port for $service"
+                fi
+            else
+                echo "    ✅ Port $default_port is available for $service"
+                # Track this port as assigned even if it's the default
+                ASSIGNED_PORTS="$ASSIGNED_PORTS $default_port "
+            fi
+        }
+        
+        # Check each service port (service_name default_port container_port port_index)
+        check_and_update_port "flowise" 3001 3001 0
+        check_and_update_port "open-webui" 8080 8080 0
+        check_and_update_port "qdrant" 6333 6333 0
+        check_and_update_port "neo4j" 7474 7474 1
+        check_and_update_port "langfuse-worker" 3030 3030 0
+        check_and_update_port "langfuse-web" 3000 3000 0
+        check_and_update_port "clickhouse" 8123 8123 0
+        check_and_update_port "minio" 9010 9000 0
+        check_and_update_port "postgres" 5433 5432 0
+        check_and_update_port "redis" 6379 6379 0
+        check_and_update_port "searxng" 8081 8080 0
+        
+        if [ "$PORT_CONFLICTS" = true ]; then
+            echo -e "${GREEN}✅ Port conflicts resolved for macOS compatibility${NC}"
+            echo "    Updated ports will be displayed in the final service URLs"
+        else
+            echo -e "${GREEN}✅ No port conflicts detected${NC}"
+        fi
+    else
+        echo "  ⚠️  Override file not found, skipping port conflict check"
+    fi
+fi
+
 # Configure Supabase Edge Functions environment variables BEFORE starting services
 echo -e "${YELLOW}Configuring Supabase Edge Functions environment variables...${NC}"
 
@@ -1452,6 +1597,32 @@ fi
 echo "✅ Webhook verification completed"
 
 
+# Function to get actual port from override file
+get_actual_port() {
+    local service=$1
+    local default_port=$2
+    local override_file="docker-compose.override.private.yml"
+    
+    if [ -f "$override_file" ]; then
+        # Extract port from the override file using yq
+        local port_mapping=$(yq eval ".services.$service.ports[0] // empty" "$override_file" 2>/dev/null)
+        if [ -n "$port_mapping" ]; then
+            # Extract the host port from mapping like "127.0.0.1:8082:8080"
+            echo "$port_mapping" | sed -E 's/.*:([0-9]+):[0-9]+$/\1/'
+        else
+            echo "$default_port"
+        fi
+    else
+        echo "$default_port"
+    fi
+}
+
+# Get actual assigned ports (in case they were changed due to conflicts)
+FLOWISE_PORT=$(get_actual_port "flowise" "3001")
+WEBUI_PORT=$(get_actual_port "open-webui" "8080")
+SEARXNG_PORT=$(get_actual_port "searxng" "8081")
+LANGFUSE_PORT=$(get_actual_port "langfuse-web" "3000")
+
 # Verify InsightsLM is running
 echo -e "${YELLOW}Verifying InsightsLM container...${NC}"
 if docker ps | grep -q insightslm; then
@@ -1471,11 +1642,19 @@ Service URLs:
 - Supabase: http://localhost:8000
 - n8n: http://localhost:5678
 - InsightsLM: http://localhost:3010
+- Open WebUI: http://localhost:${WEBUI_PORT}
+- Flowise: http://localhost:${FLOWISE_PORT}
+- Langfuse: http://localhost:${LANGFUSE_PORT}
+- SearXNG: http://localhost:${SEARXNG_PORT}
 
 Service Access URLs:
 - Supabase: http://${ACCESS_HOST}:8000
 - n8n: http://${ACCESS_HOST}:5678
 - InsightsLM: http://${ACCESS_HOST}:3010
+- Open WebUI: http://${ACCESS_HOST}:${WEBUI_PORT}
+- Flowise: http://${ACCESS_HOST}:${FLOWISE_PORT}
+- Langfuse: http://${ACCESS_HOST}:${LANGFUSE_PORT}
+- SearXNG: http://${ACCESS_HOST}:${SEARXNG_PORT}
 EOF
 
 # Save current .env for future comparison
@@ -1497,8 +1676,10 @@ echo "   Email: ${UNIFIED_EMAIL}"
 echo "   📁 File location: $(pwd)/unified_credentials.txt"
 echo ""
 echo "Extra Services:"
-echo "💬 Open WebUI: http://${ACCESS_HOST}:8080"
-echo "🌐 Flowise: http://${ACCESS_HOST}:3001"
+echo "💬 Open WebUI: http://${ACCESS_HOST}:${WEBUI_PORT}"
+echo "🌐 Flowise: http://${ACCESS_HOST}:${FLOWISE_PORT}"
+echo "📊 Langfuse: http://${ACCESS_HOST}:${LANGFUSE_PORT}"
+echo "🔍 SearXNG: http://${ACCESS_HOST}:${SEARXNG_PORT}"
 echo ""
 echo "🔗 Webhook Status:"
 echo "   ✅ All Edge Functions and n8n workflows activated via web API"

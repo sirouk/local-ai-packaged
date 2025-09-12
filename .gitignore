@@ -6,3 +6,24 @@ shared-backup/
 .env.test
 searxng/settings.yml
 searxng/uwsgi*
+.venv/
+.env.previous
+unified_credentials.txt
+__pycache__/
+**/__pycache__/
+
+# Deployment-generated files
+workflows/staging/*
+workflows/sota/
+workflows/fixed/
+backup_*/
+
+sota-credential-ids.json
+sota-rag-deployment.flag
+DEPLOYMENT_SUMMARY.txt
+
+supabase
+supabase/*
+insights-lm-local-package
+insights-lm-local-package/*
+workflows/credential-templates.json
