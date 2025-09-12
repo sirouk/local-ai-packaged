@@ -493,6 +493,27 @@ else
     echo "  ✅ supabase/docker directory exists"
 fi
 
+# Fix storage extended attributes issue on macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}Configuring storage for macOS compatibility...${NC}"
+    
+    STORAGE_COMPOSE="supabase/docker/docker-compose.yml"
+    # Ensure the storage service exists before modifying
+    if yq eval '.services | has("storage")' "$STORAGE_COMPOSE" | grep -q "true"; then
+        echo "  Switching storage service to named volume to avoid xattr issues..."
+        # Replace bind-mount with a Docker named volume that lives inside the VM (supports xattrs)
+        yq eval '.services.storage.volumes = ["supabase_storage_data:/var/lib/storage"]' -i "$STORAGE_COMPOSE"
+
+        # Add the named volume at root level if it does not yet exist
+        if ! yq eval '.volumes | has("supabase_storage_data")' "$STORAGE_COMPOSE" 2>/dev/null | grep -q "true"; then
+            yq eval '.volumes.supabase_storage_data = {}' -i "$STORAGE_COMPOSE"
+        fi
+        echo "  ✅ Storage service updated to use Docker volume \"supabase_storage_data\""
+    else
+        echo "  ⚠️  Storage service not found, xattr fix may not be needed"
+    fi
+fi
+
 echo -e "${GREEN}✓ Required repositories verified and up to date${NC}"
 
 # Validate required files exist for selected deployment mode
