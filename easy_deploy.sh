@@ -42,7 +42,7 @@ fi
 
 # Repository configuration
 REPO_URL="https://github.com/sirouk/local-ai-packaged.git"
-REPO_BRANCH="dual-rags"
+REPO_BRANCH="main"
 TARGET_DIR="local-ai-packaged"
 
 # Handle repository setup based on execution method
