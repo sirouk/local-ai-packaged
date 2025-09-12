@@ -678,79 +678,49 @@ if [ "$IS_MACOS" = true ]; then
     
     # Check if override file exists
     if [ -f "$OVERRIDE_FILE" ]; then
-        # Array of services and their default ports to check
-        declare -A SERVICE_PORTS=(
-            ["flowise"]="3001"
-            ["open-webui"]="8080" 
-            ["qdrant"]="6333"
-            ["neo4j"]="7474"
-            ["langfuse-worker"]="3030"
-            ["langfuse-web"]="3000"
-            ["clickhouse"]="8123"
-            ["minio"]="9010"
-            ["postgres"]="5433"
-            ["redis"]="6379"
-            ["searxng"]="8081"
-        )
-        
+        # Define services and ports using simple arrays (compatible with bash 3.x on macOS)
         PORT_CONFLICTS=false
         
-        for service in "${!SERVICE_PORTS[@]}"; do
-            port=${SERVICE_PORTS[$service]}
-            echo "  Checking port $port for service $service..."
+        # Check each service and port individually (bash 3.x compatible)
+        check_and_update_port() {
+            local service=$1
+            local default_port=$2
+            local container_port=$3
+            local port_index=${4:-0}
             
-            if ! check_port_available $port; then
-                echo "    ⚠️  Port $port is already in use"
-                new_port=$(find_available_port $((port + 1)))
+            echo "  Checking port $default_port for service $service..."
+            
+            if ! check_port_available $default_port; then
+                echo "    ⚠️  Port $default_port is already in use"
+                new_port=$(find_available_port $((default_port + 1)))
                 
-                if [ $new_port -ne $port ]; then
-                    echo "    → Reassigning $service from port $port to $new_port"
+                if [ $new_port -ne $default_port ]; then
+                    echo "    → Reassigning $service from port $default_port to $new_port"
                     
-                    # Update the port in the override file based on service
-                    case "$service" in
-                        "flowise")
-                            yq eval ".services.flowise.ports[0] = \"127.0.0.1:${new_port}:3001\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "open-webui")
-                            yq eval ".services.open-webui.ports[0] = \"127.0.0.1:${new_port}:8080\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "qdrant")
-                            yq eval ".services.qdrant.ports[0] = \"127.0.0.1:${new_port}:6333\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "neo4j")
-                            yq eval ".services.neo4j.ports[1] = \"127.0.0.1:${new_port}:7474\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "langfuse-worker")
-                            yq eval ".services.langfuse-worker.ports[0] = \"127.0.0.1:${new_port}:3030\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "langfuse-web")
-                            yq eval ".services.langfuse-web.ports[0] = \"127.0.0.1:${new_port}:3000\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "clickhouse")
-                            yq eval ".services.clickhouse.ports[0] = \"127.0.0.1:${new_port}:8123\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "minio")
-                            yq eval ".services.minio.ports[0] = \"127.0.0.1:${new_port}:9000\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "postgres")
-                            yq eval ".services.postgres.ports[0] = \"127.0.0.1:${new_port}:5432\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "redis")
-                            yq eval ".services.redis.ports[0] = \"127.0.0.1:${new_port}:6379\"" -i "$OVERRIDE_FILE"
-                            ;;
-                        "searxng")
-                            yq eval ".services.searxng.ports[0] = \"127.0.0.1:${new_port}:8080\"" -i "$OVERRIDE_FILE"
-                            ;;
-                    esac
+                    # Update the port in the override file
+                    yq eval ".services.$service.ports[$port_index] = \"127.0.0.1:${new_port}:${container_port}\"" -i "$OVERRIDE_FILE"
                     
                     PORT_CONFLICTS=true
                 else
                     echo "    ❌ Could not find alternative port for $service"
                 fi
             else
-                echo "    ✅ Port $port is available for $service"
+                echo "    ✅ Port $default_port is available for $service"
             fi
-        done
+        }
+        
+        # Check each service port (service_name default_port container_port port_index)
+        check_and_update_port "flowise" 3001 3001 0
+        check_and_update_port "open-webui" 8080 8080 0
+        check_and_update_port "qdrant" 6333 6333 0
+        check_and_update_port "neo4j" 7474 7474 1
+        check_and_update_port "langfuse-worker" 3030 3030 0
+        check_and_update_port "langfuse-web" 3000 3000 0
+        check_and_update_port "clickhouse" 8123 8123 0
+        check_and_update_port "minio" 9010 9000 0
+        check_and_update_port "postgres" 5433 5432 0
+        check_and_update_port "redis" 6379 6379 0
+        check_and_update_port "searxng" 8081 8080 0
         
         if [ "$PORT_CONFLICTS" = true ]; then
             echo -e "${GREEN}✅ Port conflicts resolved for macOS compatibility${NC}"
