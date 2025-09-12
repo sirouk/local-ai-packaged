@@ -2390,14 +2390,14 @@ PASSWORD_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'${UNIFIED_PASSW
 # Wait for n8n to initialize
 sleep 10
 
-# Update n8n user (following easy_setup_v2.sh pattern exactly)
-docker exec supabase-db psql -U postgres -d postgres -c "
-UPDATE \"user\" SET 
-    email='${UNIFIED_EMAIL}',
-    \"firstName\"='Admin',
-    \"lastName\"='User',
-    password='${PASSWORD_HASH}'
-WHERE \"role\"='global:owner';" >/dev/null 2>&1
+# # Update n8n user (following easy_setup_v2.sh pattern exactly)
+# docker exec supabase-db psql -U postgres -d postgres -c "
+# UPDATE \"user\" SET 
+#     email='${UNIFIED_EMAIL}',
+#     \"firstName\"='Admin',
+#     \"lastName\"='User',
+#     password='${PASSWORD_HASH}'
+# WHERE \"role\"='global:owner';" >/dev/null 2>&1
 
 # CRITICAL: Set the instance owner setup flag to true (following easy_setup_v2.sh pattern exactly)
 # This flag controls whether n8n shows setup screen vs login screen
