@@ -2397,7 +2397,7 @@ UPDATE \"user\" SET
     \"firstName\"='Admin',
     \"lastName\"='User',
     password='${PASSWORD_HASH}'
-WHERE \"roleSlug\"='global:owner';" >/dev/null 2>&1
+WHERE \"role\"='global:owner';" >/dev/null 2>&1
 
 # CRITICAL: Set the instance owner setup flag to true (following easy_setup_v2.sh pattern exactly)
 # This flag controls whether n8n shows setup screen vs login screen
