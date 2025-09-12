@@ -213,7 +213,7 @@ echo "- All database data and credentials"
 echo "- All workflow configurations"
 echo "- All user documents and cache"
 echo "- All backup directories"
-echo "- Repository directories (supabase/, insights-lm-local-package/)"
+echo "- Repository directories will be updated to latest versions"
 echo ""
 read -p "Reset all data and start fresh? (Y/n): " -r RESET_DATA
 RESET_DATA=${RESET_DATA:-Y}
@@ -224,7 +224,6 @@ if [[ "$RESET_DATA" =~ ^[Yy]$ ]]; then
 else
     FORCE_RESET=false
     echo -e "${GREEN}✓ Preserving existing data - running idempotent deployment${NC}"
-    echo -e "${BLUE}Note: Repository directories will still be updated from git if they exist${NC}"
 fi
 
 # =============================================================================
@@ -1061,13 +1060,8 @@ echo "✅ Comprehensive Docker cleanup completed"
         echo "  → Removing workflow exports..."
         rm -rf n8n/backup/ 2>/dev/null || true
         
-        # Remove repository directories for complete fresh start
-        echo "  → Removing repository directories for complete fresh start..."
-        rm -rf supabase/ 2>/dev/null || true
-        rm -rf insights-lm-local-package/ 2>/dev/null || true
-        echo "    Removed supabase/ and insights-lm-local-package/ directories"
-        
         echo -e "${RED}✅ Complete data wipe finished - starting completely fresh${NC}"
+        echo -e "${BLUE}Note: Repository directories will be updated by the repository management section${NC}"
     fi
 
 echo -e "${GREEN}✓ Volume cleanup complete - starting fresh${NC}"
